@@ -1,0 +1,29 @@
+# 大文件/二进制文件
+*.zip
+*.tar.gz
+*.pdf
+*.mp4
+*.pth
+*.bin
+*.pt
+# PyCharm 配置文件
+.idea/
+*.iml
+
+# Python 缓存文件
+__pycache__/
+*.py[cod]
+
+# 数据文件/日志
+logs/
+*.log
+pretrained_models/
+
+# 环境文件
+.env
+venv/
+# 在 .gitignore 中添加
+*.gif
+dinov2-*/
+gpt2/
+datasets/
