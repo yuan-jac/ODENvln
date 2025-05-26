@@ -53,7 +53,7 @@ class SoonGMapObjectNavAgent(GMapObjectNavAgent):
         masks = []
         entropys = []
         ml_loss = 0.
-        og_loss = 0.
+        og_loss = 0.   
 
         for t in range(self.args.max_action_len):
             for i, gmap in enumerate(gmaps):
@@ -81,7 +81,7 @@ class SoonGMapObjectNavAgent(GMapObjectNavAgent):
             nav_inputs.update(
                 self._nav_vp_variable(
                     obs, gmaps, pano_embeds, pano_inputs['cand_vpids'],
-                    pano_inputs['view_lens'], pano_inputs['obj_lens'],
+                    pano_inputs['view_lens'], pano_inputs['obj_lens'], 
                     pano_inputs['nav_types'],
                 )
             )
@@ -122,7 +122,7 @@ class SoonGMapObjectNavAgent(GMapObjectNavAgent):
             if train_ml is not None:
                 # Supervised training
                 nav_targets = self._teacher_action(
-                    obs, nav_vpids, ended,
+                    obs, nav_vpids, ended, 
                     visited_masks=nav_inputs['gmap_visited_masks'] if self.args.fusion != 'local' else None
                 )
                 # print(t, nav_logits, nav_targets)
@@ -138,7 +138,7 @@ class SoonGMapObjectNavAgent(GMapObjectNavAgent):
                 # objec grounding 
                 obj_targets = self._teacher_object(obs, ended, pano_inputs['view_lens'])
                 # print(t, obj_targets[6], obj_logits[6], obs[6]['obj_ids'], pano_inputs['view_lens'][i], obs[6]['gt_obj_id'])
-                og_loss += self.criterion(obj_logits, obj_targets)
+                og_loss += self.criterion(obj_logits, obj_targets) 
                 # print(F.cross_entropy(obj_logits, obj_targets, reduction='none'))
                 # print(t, 'og_loss', og_loss.item(), self.criterion(obj_logits, obj_targets).item())
 
@@ -147,12 +147,12 @@ class SoonGMapObjectNavAgent(GMapObjectNavAgent):
                 a_t = nav_targets  # teacher forcing
             elif self.feedback == 'argmax':
                 _, a_t = nav_logits.max(1)  # student forcing - argmax
-                a_t = a_t.detach()
+                a_t = a_t.detach() 
             elif self.feedback == 'sample':
                 c = torch.distributions.Categorical(nav_probs)
                 self.logs['entropy'].append(c.entropy().sum().item())  # For log
                 entropys.append(c.entropy())  # For optimization
-                a_t = c.sample().detach()
+                a_t = c.sample().detach() 
             elif self.feedback == 'expl_sample':
                 _, a_t = nav_probs.max(1)
                 rand_explores = np.random.rand(batch_size, ) > self.args.expl_max_ratio  # hyper-param
@@ -177,7 +177,7 @@ class SoonGMapObjectNavAgent(GMapObjectNavAgent):
                 a_t_stop = a_t == 0
 
             # Prepare environment action
-            cpu_a_t = []
+            cpu_a_t = []  
             for i in range(batch_size):
                 if a_t_stop[i] or ended[i] or nav_inputs['no_vp_left'][i] or (t == self.args.max_action_len - 1):
                     cpu_a_t.append(None)

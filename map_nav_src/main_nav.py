@@ -238,7 +238,6 @@ def train(args, train_env, val_envs, aug_env=None, rank=-1):
             for env_name in best_val:
                 write_to_record_file(env_name + ' | ' + best_val[env_name]['state'], record_file)  # 写入最佳结果
 
-
 def valid(args, train_env, val_envs, rank=-1):
     """
     验证模型。
@@ -327,7 +326,6 @@ def main():
         train(args, train_env, val_envs, aug_env=aug_env, rank=rank)  # 训练模式
     else:
         valid(args, train_env, val_envs, rank=rank)  # 验证模式
-
 
 if __name__ == '__main__':
     main()

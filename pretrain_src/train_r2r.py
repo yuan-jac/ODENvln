@@ -27,7 +27,6 @@ from utils.save import ModelSaver, save_training_meta
 
 torch.set_float32_matmul_precision('high')  # 推荐 A800 设置
 
-
 def create_dataloaders(
         data_cfg, nav_db, tok, is_train: bool, device: torch.device, opts
 ):
@@ -112,7 +111,7 @@ def main(opts):
             del tmp
         elif opts.init_pretrained == 'lxmert':
             tmp = torch.load(
-                '../datasets/pretrained/LXMERT/model_LXRT.pth',
+                '/home/files/A/zhanghuaxiang3/GridMM/datasets/pretrained/LXMERT/model_LXRT.pth',
                 map_location=lambda storage, loc: storage
             )
             for param_name, param in tmp.items():
@@ -124,7 +123,10 @@ def main(opts):
                     param_name1 = param_name.replace('bert.encoder.x_layers', 'bert.local_encoder.encoder.x_layers')
                     param_name2 = param_name.replace('bert.encoder.x_layers', 'bert.global_encoder.encoder.x_layers')
                     param_name3 = param_name.replace('bert.encoder.x_layers', 'bert.grid_txt_encoder.encoder.x_layers')
-                    checkpoint[param_name1] = checkpoint[param_name2] = checkpoint[param_name3] = param
+                    param_name4 = param_name.replace('bert.encoder.x_layers',
+                                                     'bert.img_embeddings.fusion_module.cross_encoder.x_layers')
+                    checkpoint[param_name1] = checkpoint[param_name2] = checkpoint[param_name3] = checkpoint[
+                        param_name4] = param
 
                 elif 'cls.predictions' in param_name:
                     param_name = param_name.replace('cls.predictions', 'mlm_head.predictions')
@@ -156,7 +158,7 @@ def main(opts):
         data_cfg.train_traj_files, data_cfg.img_ft_file,
         data_cfg.scanvp_cands_file, data_cfg.connectivity_dir,
         image_prob_size=model_config.image_prob_size,
-        image_feat_size=model_config.image_feat_size,
+        image_feat_size=model_config.image_feat_size, 
         angle_feat_size=model_config.angle_feat_size,
         max_txt_len=opts.max_txt_len, in_memory=False, is_train=True,
     )
@@ -164,7 +166,7 @@ def main(opts):
         data_cfg.val_seen_traj_files, data_cfg.img_ft_file,
         data_cfg.scanvp_cands_file, data_cfg.connectivity_dir,
         image_prob_size=model_config.image_prob_size,
-        image_feat_size=model_config.image_feat_size,
+        image_feat_size=model_config.image_feat_size, 
         angle_feat_size=model_config.angle_feat_size,
         max_txt_len=opts.max_txt_len, in_memory=False, is_train=False,
     )
@@ -172,7 +174,7 @@ def main(opts):
         data_cfg.val_unseen_traj_files, data_cfg.img_ft_file,
         data_cfg.scanvp_cands_file, data_cfg.connectivity_dir,
         image_prob_size=model_config.image_prob_size,
-        image_feat_size=model_config.image_feat_size,
+        image_feat_size=model_config.image_feat_size, 
         angle_feat_size=model_config.angle_feat_size,
         max_txt_len=opts.max_txt_len, in_memory=False, is_train=False,
     )
@@ -324,7 +326,7 @@ def main(opts):
         validate(model, val_dataloaders, setname='_seen')
         LOGGER.info(f'------Step {global_step}: start validation unseen------')
         validate(model, val2_dataloaders, setname='_unseen')
-        model_saver.save(model, global_step)
+        model_saver.save(model, global_step)   
 
 
 def validate(model, val_dataloaders, setname=''):
@@ -370,17 +372,16 @@ def validate_mlm(model, val_loader):
     val_log = {'loss': val_loss,
                'acc': acc,
                'tok_per_s': n_word / tot_time}
-    LOGGER.info(f"validation finished in {int(tot_time)} seconds, "
+    LOGGER.info(f"loss {val_loss:.2f}"
+                f"validation finished in {int(tot_time)} seconds"
                 f"acc: {acc * 100:.2f}")
     return val_log
-
 
 def compute_accuracy_for_soft_targets(out, labels):
     outputs = out.max(dim=-1)[1]
     labels = labels.max(dim=-1)[1]  # argmax
     n_correct = (outputs == labels).sum().item()
     return n_correct
-
 
 @torch.no_grad()
 def validate_mrc(model, val_loader):
@@ -405,7 +406,8 @@ def validate_mrc(model, val_loader):
     val_log = {'loss': val_loss,
                'acc': val_acc,
                'feat_per_s': n_feat / tot_time}
-    LOGGER.info(f"validation finished in {int(tot_time)} seconds, "
+    LOGGER.info(f"loss {val_loss:.2f}"
+                f"validation finished in {int(tot_time)} seconds"
                 f"score: {val_acc * 100:.2f}")
     return val_log
 
@@ -440,10 +442,10 @@ def validate_sap(model, val_loader):
     val_log = {'gloss': val_gloss, 'lloss': val_lloss, 'floss': val_floss,
                'gacc': gacc, 'lacc': lacc, 'facc': facc,
                'tok_per_s': n_data / tot_time}
-    LOGGER.info(f"validation finished in {int(tot_time)} seconds, "
+    LOGGER.info(f"loss {val_gloss:.2f}, {val_lloss:.2f}, {val_floss:.2f}"
+                f"validation finished in {int(tot_time)}seconds"
                 f"gacc: {gacc * 100:.2f}, lacc: {lacc * 100:.2f}, facc: {facc * 100:.2f}")
     return val_log
-
 
 def build_args():
     parser = load_parser()
@@ -458,7 +460,6 @@ def build_args():
         )
 
     return opts
-
 
 if __name__ == '__main__':
     args = build_args()

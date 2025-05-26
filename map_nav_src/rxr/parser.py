@@ -91,7 +91,7 @@ def parse_args():
     # # A2C
     parser.add_argument("--gamma", default=0.9, type=float, help='reward discount factor')
     parser.add_argument(
-        "--normalize", dest="normalize_loss", default="total",
+        "--normalize", dest="normalize_loss", default="total", 
         type=str, help='batch or total'
     )
     parser.add_argument('--train_alg',
@@ -131,3 +131,4 @@ def postprocess_args(args):
     os.makedirs(args.pred_dir, exist_ok=True)
 
     return args
+

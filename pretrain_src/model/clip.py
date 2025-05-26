@@ -64,7 +64,6 @@ class Transformer(nn.Module):
     def forward(self, x, attn_mask=None):
         return self.resblocks((x, attn_mask))[0]
 
-
 class VisionTransformer(nn.Module):
     def __init__(self, input_resolution: int, patch_size: int, width: int, layers: int, heads: int):
         super().__init__()
@@ -83,7 +82,6 @@ class VisionTransformer(nn.Module):
         x = x.permute(1, 0, 2)  # LND -> NLD
         x = self.ln_post(x)
         return x
-
 
 class CLIP(nn.Module):
     def __init__(self, input_resolution: int, patch_size: int, width: int, layers: int, heads: int):

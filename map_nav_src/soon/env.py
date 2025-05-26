@@ -41,7 +41,7 @@ class SoonObjectNavBatch(object):
         # in validation, we would split the data
         if sel_data_idxs is not None:
             t_split, n_splits = sel_data_idxs
-            ndata_per_split = len(self.data) // n_splits
+            ndata_per_split = len(self.data) // n_splits 
             start_idx = ndata_per_split * t_split
             if t_split == n_splits - 1:
                 end_idx = None
@@ -68,7 +68,7 @@ class SoonObjectNavBatch(object):
     def _get_gt_trajs(self, data):
         # for evaluation
         gt_trajs = {
-            x['path_id']: copy.deepcopy(x) for x in data if 'bboxes' in x
+            x['path_id']: copy.deepcopy(x) for x in data if 'bboxes' in x 
         }
         # normalize
         for path_id, value in gt_trajs.items():
@@ -166,7 +166,6 @@ class SoonObjectNavBatch(object):
     def make_candidate(self, feature, scanId, viewpointId, viewId):
         def _loc_distance(loc):
             return np.sqrt(loc.rel_heading ** 2 + loc.rel_elevation ** 2)
-
         base_heading = (viewId % 12) * math.radians(30)
         base_elevation = (viewId // 12 - 1) * math.radians(30)
 
@@ -253,7 +252,7 @@ class SoonObjectNavBatch(object):
 
             # objects
             obj_img_fts, obj_ang_fts, obj_box_fts, obj_directions, obj_ids = self.obj_db.get_object_feature(
-                state.scanId, state.location.viewpointId,
+                state.scanId, state.location.viewpointId, 
                 state.heading, state.elevation, self.angle_feat_size,
                 max_objects=self.max_objects
             )
@@ -341,7 +340,7 @@ class SoonObjectNavBatch(object):
         gt_path = gt_item['path']
         gt_bboxes = gt_item['bboxes']
         start_vp = gt_path[0]
-        goal_vp = gt_path[-1]
+        goal_vp = gt_path[-1]   
 
         path = sum(pred_path, [])
         assert gt_path[0] == path[0], 'Result trajectories should include the start position'

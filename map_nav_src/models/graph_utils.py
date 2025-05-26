@@ -5,7 +5,6 @@ import numpy as np
 MAX_DIST = 30
 MAX_STEP = 10
 
-
 def calc_position_distance(a, b):
     # a, b: (x, y, z)
     dx = b[0] - a[0]
@@ -13,7 +12,6 @@ def calc_position_distance(a, b):
     dz = b[2] - a[2]
     dist = np.sqrt(dx ** 2 + dy ** 2 + dz ** 2)
     return dist
-
 
 def calculate_vp_rel_pos_fts(a, b, base_heading=0, base_elevation=0):
     # a, b: (x, y, z)
@@ -33,7 +31,6 @@ def calculate_vp_rel_pos_fts(a, b, base_heading=0, base_elevation=0):
     elevation -= base_elevation
 
     return heading, elevation, xyz_dist
-
 
 def get_angle_fts(headings, elevations, angle_feat_size=4):
     ang_fts = [np.sin(headings), np.cos(headings), np.sin(elevations), np.cos(elevations)]

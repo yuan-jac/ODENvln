@@ -26,7 +26,6 @@ def get_tokenizer(args):
 
     return tokenizer  # 返回分词器对象
 
-
 def get_vlnbert_models(args, config=None):
     from transformers import PretrainedConfig
     from map_nav_src.models.vilmodel import GlocalTextPathNavCMT
@@ -36,7 +35,7 @@ def get_vlnbert_models(args, config=None):
         ckpt_weights = torch.load(model_name_or_path)
         for k, v in ckpt_weights.items():
             if k.startswith('module'):
-                k = k[7:]
+                k = k[7:]    
             if '_head' in k or 'sap_fuse' in k:
                 new_ckpt_weights['bert.' + k] = v
             else:

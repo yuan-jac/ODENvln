@@ -80,7 +80,7 @@ class GMapNavAgent(Seq2SeqAgent):
 
         return {
             'view_img_fts': batch_view_img_fts, 'loc_fts': batch_loc_fts,
-            'nav_types': batch_nav_types, 'view_lens': batch_view_lens,
+            'nav_types': batch_nav_types, 'view_lens': batch_view_lens, 
             'cand_vpids': batch_cand_vpids,
         }
 
@@ -93,7 +93,7 @@ class GMapNavAgent(Seq2SeqAgent):
         batch_gmap_pair_dists, batch_gmap_visited_masks = [], []
         batch_no_vp_left = []
         for i, gmap in enumerate(gmaps):
-            visited_vpids, unvisited_vpids = [], []
+            visited_vpids, unvisited_vpids = [], []                
             for k in gmap.node_positions.keys():
                 if self.args.act_visited_nodes:
                     if k == obs[i]['viewpoint']:
@@ -152,9 +152,9 @@ class GMapNavAgent(Seq2SeqAgent):
         gmap_pair_dists = gmap_pair_dists.cuda()
 
         return {
-            'gmap_vpids': batch_gmap_vpids, 'gmap_img_embeds': batch_gmap_img_embeds,
+            'gmap_vpids': batch_gmap_vpids, 'gmap_img_embeds': batch_gmap_img_embeds, 
             'gmap_step_ids': batch_gmap_step_ids, 'gmap_pos_fts': batch_gmap_pos_fts,
-            'gmap_visited_masks': batch_gmap_visited_masks,
+            'gmap_visited_masks': batch_gmap_visited_masks, 
             'gmap_pair_dists': gmap_pair_dists, 'gmap_masks': batch_gmap_masks,
             'no_vp_left': batch_no_vp_left, 'grid_fts': [obs[index]['grid_fts'].cuda() for index in range(len(obs))],
             'grid_map': [obs[index]['grid_map'].cuda() for index in range(len(obs))], 'gridmap_pos_fts': torch.cat(
@@ -172,13 +172,13 @@ class GMapNavAgent(Seq2SeqAgent):
         batch_vp_pos_fts = []
         for i, gmap in enumerate(gmaps):
             cur_cand_pos_fts = gmap.get_pos_fts(
-                obs[i]['viewpoint'], cand_vpids[i],
+                obs[i]['viewpoint'], cand_vpids[i], 
                 obs[i]['heading'], obs[i]['elevation']
             )
             cur_start_pos_fts = gmap.get_pos_fts(
-                obs[i]['viewpoint'], [gmap.start_vp],
+                obs[i]['viewpoint'], [gmap.start_vp], 
                 obs[i]['heading'], obs[i]['elevation']
-            )
+            )                    
             # add [stop] token at beginning
             vp_pos_fts = np.zeros((vp_img_embeds.size(1), 14), dtype=np.float32)
             vp_pos_fts[:, :7] = cur_start_pos_fts
@@ -289,7 +289,7 @@ class GMapNavAgent(Seq2SeqAgent):
         # Init the logs
         masks = []
         entropys = []
-        ml_loss = 0.
+        ml_loss = 0.     
 
         for t in range(self.args.max_action_len):
             for i, gmap in enumerate(gmaps):
@@ -316,7 +316,7 @@ class GMapNavAgent(Seq2SeqAgent):
             nav_inputs = self._nav_gmap_variable(obs, gmaps)
             nav_inputs.update(
                 self._nav_vp_variable(
-                    obs, gmaps, pano_embeds, pano_inputs['cand_vpids'],
+                    obs, gmaps, pano_embeds, pano_inputs['cand_vpids'], 
                     pano_inputs['view_lens'], pano_inputs['nav_types'],
                 )
             )
@@ -350,7 +350,7 @@ class GMapNavAgent(Seq2SeqAgent):
             if train_ml is not None:
                 # Supervised training
                 nav_targets = self._teacher_action(
-                    obs, nav_vpids, ended,
+                    obs, nav_vpids, ended, 
                     visited_masks=nav_inputs['gmap_visited_masks'] if self.args.fusion != 'local' else None
                 )
                 # print(t, nav_logits, nav_targets)
@@ -369,12 +369,12 @@ class GMapNavAgent(Seq2SeqAgent):
 
             elif self.feedback == 'argmax':
                 _, a_t = nav_logits.max(1)  # student forcing - argmax
-                a_t = a_t.detach()
+                a_t = a_t.detach() 
             elif self.feedback == 'sample':
                 c = torch.distributions.Categorical(nav_probs)
                 self.logs['entropy'].append(c.entropy().sum().item())  # For log
                 entropys.append(c.entropy())  # For optimization
-                a_t = c.sample().detach()
+                a_t = c.sample().detach() 
             elif self.feedback == 'expl_sample':
                 _, a_t = nav_probs.max(1)
                 rand_explores = np.random.rand(batch_size, ) > self.args.expl_max_ratio  # hyper-param
@@ -399,7 +399,7 @@ class GMapNavAgent(Seq2SeqAgent):
                 a_t_stop = a_t == 0
 
             # Prepare environment action
-            cpu_a_t = []
+            cpu_a_t = []  
             for i in range(batch_size):
                 if a_t_stop[i] or ended[i] or nav_inputs['no_vp_left'][i] or (t == self.args.max_action_len - 1):
                     cpu_a_t.append(None)

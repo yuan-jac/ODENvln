@@ -17,7 +17,6 @@ class ImageFeaturesDB(object):
         image_feat_size: 图像特征的维度。
         is_train: 是否为训练模式。
     """
-
     def __init__(self, img_ft_file, image_feat_size, is_train):
         self.image_feat_size = image_feat_size  # 图像特征的维度
         self.img_ft_file = img_ft_file  # 图像特征文件的目录路径
@@ -46,7 +45,7 @@ class ImageFeaturesDB(object):
             if key in self._feature_store_4:
                 view_fts = self._feature_store_4[key].astype(np.float32)
             else:
-                with h5py.File(self.img_ft_file + '/pth_vit_base_patch16_224_imagenet.hdf5', 'r') as f:
+                with h5py.File(self.img_ft_file + '/dino_features_36_vit_b14.hdf5', 'r') as f:
                     view_fts = f[key][:, :self.image_feat_size].astype(np.float32)
                     self._feature_store_4[key] = view_fts.astype(np.float16)
 
@@ -64,11 +63,10 @@ class ImageFeaturesDB(object):
             if key in self._feature_store_4:
                 view_fts = self._feature_store_4[key].astype(np.float32)
             else:
-                with h5py.File(self.img_ft_file + '/pth_vit_base_patch16_224_imagenet.hdf5', 'r') as f:
+                with h5py.File(self.img_ft_file + '/dino_features_36_vit_b14.hdf5', 'r') as f:
                     view_fts = f[key][:, :self.image_feat_size].astype(np.float32)
                     self._feature_store_4[key] = view_fts.astype(np.float16)
         return view_fts  # 返回图像特征
-
 
 def load_nav_graphs(connectivity_dir, scans):
     """
@@ -81,7 +79,6 @@ def load_nav_graphs(connectivity_dir, scans):
     返回:
         graphs: 场景导航图的字典，键是场景标识符，值是对应的导航图。
     """
-
     # 定义一个辅助函数，用于计算两个图位置之间的欧几里得距离
     def distance(pose1, pose2):
         """
@@ -133,7 +130,6 @@ def load_nav_graphs(connectivity_dir, scans):
     # 返回包含所有场景导航图的字典
     return graphs
 
-
 def new_simulator(connectivity_dir, scan_data_dir=None):
     import MatterSim
 
@@ -155,12 +151,10 @@ def new_simulator(connectivity_dir, scan_data_dir=None):
 
     return sim
 
-
 def angle_feature(heading, elevation, angle_feat_size):
     return np.array(
         [math.sin(heading), math.cos(heading), math.sin(elevation), math.cos(elevation)] * (angle_feat_size // 4),
         dtype=np.float32)
-
 
 def get_point_angle_feature(sim, angle_feat_size, baseViewId=0):
     """
@@ -210,7 +204,6 @@ def get_point_angle_feature(sim, angle_feat_size, baseViewId=0):
     # 返回所有视角的角度特征
     return feature
 
-
 def get_all_point_angle_feature(sim, angle_feat_size):
     """
     获取所有视角的角度特征。
@@ -224,3 +217,4 @@ def get_all_point_angle_feature(sim, angle_feat_size):
     """
     # 使用列表推导式，调用 get_point_angle_feature 函数计算每个基础视角的角度特征
     return [get_point_angle_feature(sim, angle_feat_size, baseViewId) for baseViewId in range(36)]
+

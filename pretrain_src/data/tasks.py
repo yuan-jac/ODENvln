@@ -49,8 +49,7 @@ def random_word(tokens, vocab_range, mask):
         output_label[0] = tokens[0]
         output_tokens[0] = mask
 
-    return output_tokens, output_label
-
+    return output_tokens, output_label    
 
 class MlmDataset(Dataset):
     def __init__(self, nav_db, tok):
@@ -62,6 +61,7 @@ class MlmDataset(Dataset):
         self.sep_token_id = self.tok.sep_token_id  # 102
         self.mask_token_id = self.tok.mask_token_id  # 103
         self.pad_token_id = self.tok.pad_token_id  # 0
+
 
     def __len__(self):
         return len(self.nav_db)
@@ -77,6 +77,9 @@ class MlmDataset(Dataset):
         output['txt_labels'] = torch.Tensor(txt_labels).to(torch.int32)
 
         output['traj_view_img_fts'] = [torch.from_numpy(x).to(torch.float32) for x in inputs['traj_view_img_fts']]
+        if 'traj_text_feats' in inputs:
+            output['traj_text_feats'] = [torch.from_numpy(x).to(torch.float32) for x in
+                                         inputs['traj_text_feats']]  # 每个视点 [36, 768]
         if 'traj_obj_img_fts' in inputs:
             output['traj_obj_img_fts'] = [torch.from_numpy(x).to(torch.float32) for x in inputs['traj_obj_img_fts']]
         output['traj_loc_fts'] = [torch.from_numpy(x).to(torch.float32) for x in inputs['traj_loc_fts']]
@@ -98,7 +101,6 @@ class MlmDataset(Dataset):
         output["gridmap_pos_fts"] = inputs["gridmap_pos_fts"]
         return output
 
-
 def mlm_collate(inputs):
     batch = {
         k: [x[k] for x in inputs] for k in inputs[0].keys()
@@ -114,6 +116,8 @@ def mlm_collate(inputs):
         sum([[len(y) for y in x] for x in batch['traj_view_img_fts']], [])
     ).to(torch.int32)
     batch['traj_view_img_fts'] = pad_tensors(sum(batch['traj_view_img_fts'], [])).to(torch.float32)
+    if 'traj_text_feats' in batch:
+        batch['traj_text_feats'] = pad_tensors(sum(batch['traj_text_feats'], [])).to(torch.float32)
     if 'traj_obj_img_fts' in batch:
         batch['traj_vp_obj_lens'] = torch.Tensor(
             sum([[len(y) for y in x] for x in batch['traj_obj_img_fts']], [])
@@ -153,19 +157,16 @@ def _get_img_mask(mask_prob, num_images):
         img_mask[np.random.randint(num_images)] = True
     return img_mask
 
-
 def _mask_img_feat(img_feat, img_masks):
     img_masks_ext = img_masks.unsqueeze(-1).expand_as(img_feat)
     img_feat_masked = img_feat.data.masked_fill(img_masks_ext, 0)
     return img_feat_masked
-
 
 def _get_targets(img_soft_label, img_masks):
     soft_label_dim = img_soft_label.size(-1)
     img_masks_ext_for_label = img_masks.unsqueeze(-1).expand_as(img_soft_label)
     label_targets = img_soft_label[img_masks_ext_for_label].contiguous().view(-1, soft_label_dim)
     return label_targets
-
 
 class MrcDataset(Dataset):
     def __init__(self, nav_db, tok, mask_prob, end_vp_pos_ratio=1):
@@ -195,7 +196,8 @@ class MrcDataset(Dataset):
         output['txt_ids'] = torch.Tensor(inputs['instr_encoding']).to(torch.int32)
 
         output['traj_view_img_fts'] = [torch.from_numpy(x).to(torch.float32) for x in inputs['traj_view_img_fts']]
-
+        if 'traj_text_feats' in inputs:
+            output['traj_text_feats'] = [torch.from_numpy(x).to(torch.float32) for x in inputs['traj_text_feats']]
         # mask image
         view_mrc_masks = _get_img_mask(self.mask_prob, len(output['traj_view_img_fts'][-1]))
         output['traj_view_img_fts'][-1] = _mask_img_feat(output['traj_view_img_fts'][-1], view_mrc_masks)
@@ -231,7 +233,6 @@ class MrcDataset(Dataset):
         output["gridmap_pos_fts"] = inputs["gridmap_pos_fts"]
         return output
 
-
 def mrc_collate(inputs):
     batch = {
         k: [x[k] for x in inputs] for k in inputs[0].keys()
@@ -246,6 +247,9 @@ def mrc_collate(inputs):
         sum([[len(y) for y in x] for x in batch['traj_view_img_fts']], [])
     ).to(torch.int32)
     batch['traj_view_img_fts'] = pad_tensors(sum(batch['traj_view_img_fts'], [])).to(torch.float32)
+    if 'traj_text_feats' in batch:
+        batch['traj_text_feats'] = pad_tensors(sum(batch['traj_text_feats'], [])).to(torch.float32)
+
     batch['traj_loc_fts'] = pad_tensors(sum(batch['traj_loc_fts'], [])).to(torch.float32)
     batch['traj_nav_types'] = pad_sequence(sum(batch['traj_nav_types'], []), batch_first=True, padding_value=0).to(
         torch.int32)
@@ -321,6 +325,10 @@ class SapDataset(Dataset):
         output['traj_nav_types'] = [torch.Tensor(x).to(torch.int32) for x in inputs['traj_nav_types']]
         output['traj_cand_vpids'] = inputs['traj_cand_vpids']
         output['traj_vpids'] = inputs['traj_vpids']
+        # 新增 traj_text_feats 判断与赋值
+        if 'traj_text_feats' in inputs:
+            output['traj_text_feats'] = [torch.from_numpy(x).to(torch.float32) for x in
+                                         inputs['traj_text_feats']]  # 每个视点 [36, 768]
 
         output['gmap_vpids'] = inputs['gmap_vpids']
         output['gmap_step_ids'] = torch.Tensor(inputs['gmap_step_ids']).to(torch.int32)
@@ -339,7 +347,6 @@ class SapDataset(Dataset):
         output["target_patch_id"] = inputs["target_patch_id"]
         output["gridmap_pos_fts"] = inputs["gridmap_pos_fts"]
         return output
-
 
 def sap_collate(inputs):
     batch = {
@@ -363,7 +370,10 @@ def sap_collate(inputs):
     batch['traj_loc_fts'] = pad_tensors(sum(batch['traj_loc_fts'], [])).to(torch.float32)
     batch['traj_nav_types'] = pad_sequence(sum(batch['traj_nav_types'], []), batch_first=True, padding_value=0).to(
         torch.int32)
-
+    # 新增 traj_text_feats 处理
+    if 'traj_text_feats' in batch:
+        # sum所有视点的 text_feats，pad 后转 float32
+        batch['traj_text_feats'] = pad_tensors(sum(batch['traj_text_feats'], [])).to(torch.float32)
     # gmap batches: gmap_vpids
     batch['gmap_lens'] = torch.Tensor([len(x) for x in batch['gmap_step_ids']]).to(torch.int32)  # included [stop]
     batch['gmap_step_ids'] = pad_sequence(batch['gmap_step_ids'], batch_first=True, padding_value=0).to(torch.int32)
@@ -412,6 +422,8 @@ class OGDataset(Dataset):
         output['traj_nav_types'] = [torch.Tensor(x).to(torch.int32) for x in inputs['traj_nav_types']]
         output['traj_cand_vpids'] = inputs['traj_cand_vpids']
         output['traj_vpids'] = inputs['traj_vpids']
+        if 'traj_text_feats' in inputs:
+            output['traj_text_feats'] = [torch.from_numpy(x).to(torch.float32) for x in inputs['traj_text_feats']]
 
         output['gmap_vpids'] = inputs['gmap_vpids']
         output['gmap_step_ids'] = torch.Tensor(inputs['gmap_step_ids']).to(torch.int32)
@@ -428,7 +440,6 @@ class OGDataset(Dataset):
         output["target_patch_id"] = inputs["target_patch_id"]
         output["gridmap_pos_fts"] = inputs["gridmap_pos_fts"]
         return output
-
 
 def og_collate(inputs):
     batch = {
@@ -451,6 +462,8 @@ def og_collate(inputs):
     batch['traj_loc_fts'] = pad_tensors(sum(batch['traj_loc_fts'], [])).to(torch.float32)
     batch['traj_nav_types'] = pad_sequence(sum(batch['traj_nav_types'], []), batch_first=True, padding_value=0).to(
         torch.int32)
+    if 'traj_text_feats' in batch:
+        batch['traj_text_feats'] = pad_tensors(sum(batch['traj_text_feats'], [])).to(torch.float32)
 
     # gmap batches: gmap_vpids
     batch['gmap_lens'] = torch.Tensor([len(x) for x in batch['gmap_step_ids']]).to(torch.int32)  # included [stop]

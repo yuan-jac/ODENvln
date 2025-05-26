@@ -312,7 +312,7 @@ class TransformerDecoder3(nn.Module):
         elif self.mm_fusion == 'stack':
             for layer in self.layers:
                 output = layer(
-                    output, text_memory, hist_memory,
+                    output, text_memory, hist_memory, 
                     tgt_key_padding_mask=tgt_key_padding_mask,
                     text_memory_key_padding_mask=text_memory_key_padding_mask,
                     hist_memory_key_padding_mask=hist_memory_key_padding_mask,
@@ -393,7 +393,6 @@ class TransformerDecoderLayer3(nn.Module):
         tgt2 = self.linear2(self.dropout(self.activation(self.linear1(tgt2))))
         tgt = tgt + self.dropout4(tgt2)
         return tgt
-
 
 class TransformerDecoderLayer3Add(nn.Module):
 

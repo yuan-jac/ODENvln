@@ -32,11 +32,11 @@ def build_dataset(args, rank=0, is_test=False):
     # we need to shuffle the data with different seed in each processes
     if args.aug is not None:
         aug_instr_data = construct_instrs(
-            args.anno_dir, args.dataset, [args.aug],
+            args.anno_dir, args.dataset, [args.aug], 
             tokenizer=args.tokenizer, max_instr_len=args.max_instr_len
         )
         aug_env = dataset_class(
-            feat_db, obj_db, aug_instr_data, args.connectivity_dir, obj2vps,
+            feat_db, obj_db, aug_instr_data, args.connectivity_dir, obj2vps, 
             batch_size=args.batch_size, max_objects=args.max_objects,
             angle_feat_size=args.angle_feat_size,
             seed=args.seed + rank, sel_data_idxs=None, name='aug',
@@ -50,14 +50,14 @@ def build_dataset(args, rank=0, is_test=False):
         args.aug = None
     else:
         train_instr_data = construct_instrs(
-            args.anno_dir, args.dataset, ['train'],
+            args.anno_dir, args.dataset, ['train'], 
             tokenizer=args.tokenizer, max_instr_len=args.max_instr_len
         )
         train_env = dataset_class(
             feat_db, obj_db, train_instr_data, args.connectivity_dir, obj2vps,
             batch_size=args.batch_size, max_objects=args.max_objects,
             angle_feat_size=args.angle_feat_size, seed=args.seed + rank,
-            sel_data_idxs=None, name='train',
+            sel_data_idxs=None, name='train', 
             multi_endpoints=args.multi_endpoints, multi_startpoints=args.multi_startpoints,
         )
 
@@ -71,7 +71,7 @@ def build_dataset(args, rank=0, is_test=False):
     feat_db = ImageFeaturesDB(args.img_ft_file, args.image_feat_size, is_train=False)
     for split in val_env_names:
         val_instr_data = construct_instrs(
-            args.anno_dir, args.dataset, [split],
+            args.anno_dir, args.dataset, [split], 
             tokenizer=args.tokenizer, max_instr_len=args.max_instr_len
         )
         val_env = dataset_class(

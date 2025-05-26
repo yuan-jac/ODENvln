@@ -28,7 +28,6 @@ def load_viewpoint_ids(connectivity_dir):
     print('Loaded %d viewpoints' % len(viewpoint_ids))
     return viewpoint_ids
 
-
 TSV_FIELDNAMES = ['scanId', 'viewpointId', 'image_w', 'image_h', 'vfov', 'features']
 VIEWPOINT_SIZE = 36  # Number of discretized views from one viewpoint
 
@@ -51,7 +50,6 @@ def get_angle_fts(headings, elevations, angle_feat_size=4):
     if num_repeats > 1:
         ang_fts = np.concatenate([ang_fts] * num_repeats, 1)
     return ang_fts
-
 
 def calculate_vp_rel_pos_fts(a, b, base_heading=0, base_elevation=0):
     # a, b: (x, y, z)
@@ -117,7 +115,6 @@ def get_rel_position(depth_map, angle):
     rel_x = depth_x * math.cos(angle) + depth_y * math.sin(angle)
     rel_y = depth_y * math.cos(angle) - depth_x * math.sin(angle)
     return rel_x, rel_y
-
 
 class EnvBatch(object):
     ''' A simple wrapper for a batch of MatterSim environments,
@@ -257,6 +254,7 @@ class EnvBatch(object):
                     [rel_dist / MAX_DIST]
                 )
 
+
         rel_angles = np.array(rel_angles).astype(np.float32)
         rel_dists = np.array(rel_dists).astype(np.float32)
         rel_ang_fts = get_angle_fts(rel_angles[:, 0], rel_angles[:, 1])
@@ -393,6 +391,7 @@ class EnvBatch(object):
             feature = self.feat_db.get_image_feature(scan_id, viewpoint_id)
             self.feature_states[i] = (feature, state)
 
+
         for i in range(len(self.sims)):
             state = self.sims[i].getState()[0]
             scan_id = state.scanId
@@ -442,7 +441,7 @@ class ReverieObjectNavBatch(object):
         # in validation, we would split the data
         if sel_data_idxs is not None:
             t_split, n_splits = sel_data_idxs
-            ndata_per_split = len(self.data) // n_splits
+            ndata_per_split = len(self.data) // n_splits 
             start_idx = ndata_per_split * t_split
             if t_split == n_splits - 1:
                 end_idx = None
@@ -540,7 +539,6 @@ class ReverieObjectNavBatch(object):
     def make_candidate(self, feature, scanId, viewpointId, viewId):
         def _loc_distance(loc):
             return np.sqrt(loc.rel_heading ** 2 + loc.rel_elevation ** 2)
-
         base_heading = (viewId % 12) * math.radians(30)
         base_elevation = (viewId // 12 - 1) * math.radians(30)
 
@@ -627,7 +625,7 @@ class ReverieObjectNavBatch(object):
 
             # objects
             obj_img_fts, obj_ang_fts, obj_box_fts, obj_ids = self.obj_db.get_object_feature(
-                state.scanId, state.location.viewpointId,
+                state.scanId, state.location.viewpointId, 
                 state.heading, state.elevation, self.angle_feat_size,
                 max_objects=self.max_objects
             )
@@ -743,3 +741,4 @@ class ReverieObjectNavBatch(object):
             'rgspl': np.mean(metrics['rgspl']) * 100,
         }
         return avg_metrics, metrics
+

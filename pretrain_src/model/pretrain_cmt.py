@@ -12,7 +12,6 @@ from .vilmodel import BertLayerNorm, BertOnlyMLMHead, GlocalTextPathCMT
 class RegionClassification(nn.Module):
     """用于MRC（Masked Region Classification）任务的区域分类器"""
     " for MRC(-kl)"
-
     def __init__(self, hidden_size, label_dim):
         """
         参数:
@@ -36,10 +35,8 @@ class RegionClassification(nn.Module):
         output = self.net(input_)
         return output
 
-
 class ClsPrediction(nn.Module):
     """通用的分类预测头，用于SAP和OG等任务"""
-
     def __init__(self, hidden_size, input_size=None):
         """
         参数:
@@ -63,10 +60,8 @@ class ClsPrediction(nn.Module):
         """
         return self.net(x)
 
-
 class GlocalTextPathCMTPreTraining(BertPreTrainedModel):
     """全局-局部文本路径跨模态Transformer预训练模型"""
-
     def __init__(self, config):
         """初始化模型
         参数:
@@ -128,22 +123,22 @@ class GlocalTextPathCMTPreTraining(BertPreTrainedModel):
         # 根据任务类型路由到不同的前向方法
         if task.startswith('mlm'):
             return self.forward_mlm(
-                batch['txt_ids'], batch['txt_lens'], batch['traj_view_img_fts'],
+                batch['txt_ids'], batch['txt_lens'], batch['traj_view_img_fts'], batch['traj_text_feats'],
                 batch['traj_obj_img_fts'], batch['traj_loc_fts'], batch['traj_nav_types'],
                 batch['traj_step_lens'], batch['traj_vp_view_lens'], batch['traj_vp_obj_lens'],
                 batch['traj_vpids'], batch['traj_cand_vpids'],
-                batch['gmap_lens'], batch['gmap_step_ids'], batch['gmap_pos_fts'],
+                batch['gmap_lens'], batch['gmap_step_ids'], batch['gmap_pos_fts'], 
                 batch['gmap_pair_dists'], batch['gmap_vpids'], batch['vp_pos_fts'],
                 batch['txt_labels'], batch['grid_fts'], batch['grid_map'], batch['target_patch_id'],
                 batch['gridmap_pos_fts'], compute_loss
             )
         elif task.startswith('mrc'):
             return self.forward_mrc(
-                batch['txt_ids'], batch['txt_lens'], batch['traj_view_img_fts'],
+                batch['txt_ids'], batch['txt_lens'], batch['traj_view_img_fts'], batch['traj_text_feats'],
                 batch['traj_obj_img_fts'], batch['traj_loc_fts'], batch['traj_nav_types'],
                 batch['traj_step_lens'], batch['traj_vp_view_lens'], batch['traj_vp_obj_lens'],
                 batch['traj_vpids'], batch['traj_cand_vpids'],
-                batch['gmap_lens'], batch['gmap_step_ids'], batch['gmap_pos_fts'],
+                batch['gmap_lens'], batch['gmap_step_ids'], batch['gmap_pos_fts'], 
                 batch['gmap_pair_dists'], batch['gmap_vpids'], batch['vp_pos_fts'],
                 batch['vp_view_mrc_masks'], batch['vp_view_probs'],
                 batch['vp_obj_mrc_masks'], batch['vp_obj_probs'], batch['grid_fts'], batch['grid_map'],
@@ -151,11 +146,11 @@ class GlocalTextPathCMTPreTraining(BertPreTrainedModel):
             )
         elif task.startswith('sap'):
             return self.forward_sap(
-                batch['txt_ids'], batch['txt_lens'], batch['traj_view_img_fts'],
+                batch['txt_ids'], batch['txt_lens'], batch['traj_view_img_fts'], batch['traj_text_feats'],
                 batch['traj_obj_img_fts'], batch['traj_loc_fts'], batch['traj_nav_types'],
                 batch['traj_step_lens'], batch['traj_vp_view_lens'], batch['traj_vp_obj_lens'],
                 batch['traj_vpids'], batch['traj_cand_vpids'],
-                batch['gmap_lens'], batch['gmap_step_ids'], batch['gmap_pos_fts'],
+                batch['gmap_lens'], batch['gmap_step_ids'], batch['gmap_pos_fts'], 
                 batch['gmap_pair_dists'], batch['gmap_vpids'], batch['vp_pos_fts'],
                 batch['gmap_visited_masks'],
                 batch['global_act_labels'], batch['local_act_labels'], batch['grid_fts'], batch['grid_map'],
@@ -163,22 +158,22 @@ class GlocalTextPathCMTPreTraining(BertPreTrainedModel):
             )
         elif task.startswith('og'):
             return self.forward_og(
-                batch['txt_ids'], batch['txt_lens'], batch['traj_view_img_fts'],
+                batch['txt_ids'], batch['txt_lens'], batch['traj_view_img_fts'], batch['traj_text_feats'],
                 batch['traj_obj_img_fts'], batch['traj_loc_fts'], batch['traj_nav_types'],
                 batch['traj_step_lens'], batch['traj_vp_view_lens'], batch['traj_vp_obj_lens'],
                 batch['traj_vpids'], batch['traj_cand_vpids'],
-                batch['gmap_lens'], batch['gmap_step_ids'], batch['gmap_pos_fts'],
+                batch['gmap_lens'], batch['gmap_step_ids'], batch['gmap_pos_fts'], 
                 batch['gmap_pair_dists'], batch['gmap_vpids'], batch['vp_pos_fts'],
                 batch['obj_labels'], batch['grid_fts'], batch['grid_map'], batch['target_patch_id'],
                 batch['gridmap_pos_fts'], compute_loss
             )
         elif task.startswith('valid_sap_og'):
             return self.forward_sap_og(
-                batch['txt_ids'], batch['txt_lens'], batch['traj_view_img_fts'],
+                batch['txt_ids'], batch['txt_lens'], batch['traj_view_img_fts'], batch['traj_text_feats'],
                 batch['traj_obj_img_fts'], batch['traj_loc_fts'], batch['traj_nav_types'],
                 batch['traj_step_lens'], batch['traj_vp_view_lens'], batch['traj_vp_obj_lens'],
                 batch['traj_vpids'], batch['traj_cand_vpids'],
-                batch['gmap_lens'], batch['gmap_step_ids'], batch['gmap_pos_fts'],
+                batch['gmap_lens'], batch['gmap_step_ids'], batch['gmap_pos_fts'], 
                 batch['gmap_pair_dists'], batch['gmap_vpids'], batch['vp_pos_fts'],
                 batch['gmap_visited_masks'], batch['global_act_labels'], batch['local_act_labels'],
                 batch['obj_labels'], batch['grid_fts'], batch['grid_map'], batch['target_patch_id'],
@@ -188,7 +183,7 @@ class GlocalTextPathCMTPreTraining(BertPreTrainedModel):
             raise ValueError('invalid task')
 
     def forward_mlm(
-            self, txt_ids, txt_lens, traj_view_img_fts, traj_obj_img_fts, traj_loc_fts, traj_nav_types,
+            self, txt_ids, txt_lens, traj_view_img_fts, traj_text_feats, traj_obj_img_fts, traj_loc_fts, traj_nav_types,
             traj_step_lens, traj_vp_view_lens, traj_vp_obj_lens, traj_vpids, traj_cand_vpids,
             gmap_lens, gmap_step_ids, gmap_pos_fts, gmap_pair_dists, gmap_vpids, vp_pos_fts,
             txt_labels, grid_fts, grid_map, target_patch_id, gridmap_pos_fts, compute_loss
@@ -200,7 +195,7 @@ class GlocalTextPathCMTPreTraining(BertPreTrainedModel):
                 3. 预测原始token
         """
         txt_embeds = self.bert.forward_mlm(
-            txt_ids, txt_lens, traj_view_img_fts, traj_obj_img_fts, traj_loc_fts, traj_nav_types,
+            txt_ids, txt_lens, traj_view_img_fts, traj_text_feats, traj_obj_img_fts, traj_loc_fts, traj_nav_types,
             traj_step_lens, traj_vp_view_lens, traj_vp_obj_lens, traj_vpids, traj_cand_vpids,
             gmap_lens, gmap_step_ids, gmap_pos_fts, gmap_pair_dists, gmap_vpids, vp_pos_fts, grid_fts, grid_map,
             gridmap_pos_fts
@@ -227,7 +222,7 @@ class GlocalTextPathCMTPreTraining(BertPreTrainedModel):
         return hidden_masked
 
     def forward_mrc(
-            self, txt_ids, txt_lens, traj_view_img_fts, traj_obj_img_fts, traj_loc_fts, traj_nav_types,
+            self, txt_ids, txt_lens, traj_view_img_fts, traj_text_feats, traj_obj_img_fts, traj_loc_fts, traj_nav_types,
             traj_step_lens, traj_vp_view_lens, traj_vp_obj_lens, traj_vpids, traj_cand_vpids,
             gmap_lens, gmap_step_ids, gmap_pos_fts, gmap_pair_dists, gmap_vpids, vp_pos_fts,
             vp_view_mrc_masks, vp_view_probs, vp_obj_mrc_masks, vp_obj_probs, grid_fts, grid_map, target_patch_id,
@@ -235,7 +230,7 @@ class GlocalTextPathCMTPreTraining(BertPreTrainedModel):
     ):
 
         _, vp_embeds, _ = self.bert(
-            txt_ids, txt_lens, traj_view_img_fts, traj_obj_img_fts, traj_loc_fts, traj_nav_types,
+            txt_ids, txt_lens, traj_view_img_fts, traj_text_feats, traj_obj_img_fts, traj_loc_fts, traj_nav_types,
             traj_step_lens, traj_vp_view_lens, traj_vp_obj_lens, traj_vpids, traj_cand_vpids,
             gmap_lens, gmap_step_ids, gmap_pos_fts, gmap_pair_dists, gmap_vpids, vp_pos_fts, grid_fts, grid_map,
             gridmap_pos_fts=gridmap_pos_fts,
@@ -283,7 +278,7 @@ class GlocalTextPathCMTPreTraining(BertPreTrainedModel):
             return view_prediction_soft_labels, view_mrc_targets, obj_prediction_soft_labels, obj_mrc_targets
 
     def forward_sap(
-            self, txt_ids, txt_lens, traj_view_img_fts, traj_obj_img_fts, traj_loc_fts, traj_nav_types,
+            self, txt_ids, txt_lens, traj_view_img_fts, traj_text_feats, traj_obj_img_fts, traj_loc_fts, traj_nav_types,
             traj_step_lens, traj_vp_view_lens, traj_vp_obj_lens, traj_vpids, traj_cand_vpids,
             gmap_lens, gmap_step_ids, gmap_pos_fts, gmap_pair_dists, gmap_vpids, vp_pos_fts,
             gmap_visited_masks, global_act_labels, local_act_labels, grid_fts, grid_map, target_patch_id,
@@ -292,7 +287,7 @@ class GlocalTextPathCMTPreTraining(BertPreTrainedModel):
         batch_size = txt_ids.size(0)
 
         gmap_embeds, vp_embeds, gridmap_embeds = self.bert(
-            txt_ids, txt_lens, traj_view_img_fts, traj_obj_img_fts, traj_loc_fts, traj_nav_types,
+            txt_ids, txt_lens, traj_view_img_fts, traj_text_feats, traj_obj_img_fts, traj_loc_fts, traj_nav_types,
             traj_step_lens, traj_vp_view_lens, traj_vp_obj_lens, traj_vpids, traj_cand_vpids,
             gmap_lens, gmap_step_ids, gmap_pos_fts, gmap_pair_dists, gmap_vpids, vp_pos_fts, grid_fts, grid_map,
             gridmap_pos_fts=gridmap_pos_fts
@@ -364,13 +359,13 @@ class GlocalTextPathCMTPreTraining(BertPreTrainedModel):
             return global_logits, local_logits, fused_logits, global_act_labels, local_act_labels
 
     def forward_og(
-            self, txt_ids, txt_lens, traj_view_img_fts, traj_obj_img_fts, traj_loc_fts, traj_nav_types,
+            self, txt_ids, txt_lens, traj_view_img_fts, traj_text_feats, traj_obj_img_fts, traj_loc_fts, traj_nav_types,
             traj_step_lens, traj_vp_view_lens, traj_vp_obj_lens, traj_vpids, traj_cand_vpids,
             gmap_lens, gmap_step_ids, gmap_pos_fts, gmap_pair_dists, gmap_vpids, vp_pos_fts,
             obj_labels, grid_fts, grid_map, target_patch_id, gridmap_pos_fts, compute_loss
     ):
         gmap_embeds, vp_embeds, gridmap_embeds = self.bert.forward(
-            txt_ids, txt_lens, traj_view_img_fts, traj_obj_img_fts, traj_loc_fts, traj_nav_types,
+            txt_ids, txt_lens, traj_view_img_fts, traj_text_feats, traj_obj_img_fts, traj_loc_fts, traj_nav_types,
             traj_step_lens, traj_vp_view_lens, traj_vp_obj_lens, traj_vpids, traj_cand_vpids,
             gmap_lens, gmap_step_ids, gmap_pos_fts, gmap_pair_dists, gmap_vpids, vp_pos_fts, grid_fts, grid_map,
             gridmap_pos_fts=gridmap_pos_fts,
@@ -395,7 +390,7 @@ class GlocalTextPathCMTPreTraining(BertPreTrainedModel):
             return obj_logits
 
     def forward_sap_og(
-            self, txt_ids, txt_lens, traj_view_img_fts, traj_obj_img_fts, traj_loc_fts, traj_nav_types,
+            self, txt_ids, txt_lens, traj_view_img_fts, traj_text_feats, traj_obj_img_fts, traj_loc_fts, traj_nav_types,
             traj_step_lens, traj_vp_view_lens, traj_vp_obj_lens, traj_vpids, traj_cand_vpids,
             gmap_lens, gmap_step_ids, gmap_pos_fts, gmap_pair_dists, gmap_vpids, vp_pos_fts,
             gmap_visited_masks, global_act_labels, local_act_labels, obj_labels, grid_fts, grid_map, target_patch_id,
@@ -404,7 +399,7 @@ class GlocalTextPathCMTPreTraining(BertPreTrainedModel):
         batch_size = txt_ids.size(0)
 
         gmap_embeds, vp_embeds, gridmap_embeds = self.bert(
-            txt_ids, txt_lens, traj_view_img_fts, traj_obj_img_fts, traj_loc_fts, traj_nav_types,
+            txt_ids, txt_lens, traj_view_img_fts, traj_text_feats, traj_obj_img_fts, traj_loc_fts, traj_nav_types,
             traj_step_lens, traj_vp_view_lens, traj_vp_obj_lens, traj_vpids, traj_cand_vpids,
             gmap_lens, gmap_step_ids, gmap_pos_fts, gmap_pair_dists, gmap_vpids, vp_pos_fts, grid_fts, grid_map,
             gridmap_pos_fts=gridmap_pos_fts

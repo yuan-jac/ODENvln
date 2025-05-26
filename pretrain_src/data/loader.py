@@ -90,7 +90,6 @@ class PrefetchLoader(object):
     """
     overlap compute and cuda data transfer
     """
-
     def __init__(self, loader, device: torch.device):
         self.loader = loader
         self.device = device

@@ -35,7 +35,7 @@ def build_dataset(args, rank=0, is_test=True):
             tokenizer=args.tokenizer, max_instr_len=args.max_instr_len
         )
         aug_env = dataset_class(
-            feat_db, obj_db, aug_instr_data, args.connectivity_dir,
+            feat_db, obj_db, aug_instr_data, args.connectivity_dir, 
             batch_size=args.batch_size, max_objects=args.max_objects,
             angle_feat_size=args.angle_feat_size, is_train=True,
             seed=args.seed + rank, sel_data_idxs=None, name='aug',

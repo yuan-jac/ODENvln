@@ -17,7 +17,6 @@ class GMapNavAgent(Seq2SeqAgent):
     GMapNavAgent 类，用于基于图的导航任务。
     继承自 Seq2SeqAgent，实现了导航任务中的模型构建、特征提取、导航策略等功能。
     """
-
     def _build_model(self):
         """
         构建模型，初始化 VLNBert 和 Critic 模型。

@@ -416,12 +416,12 @@ class DUET(Net):
                         for m in range(k + 1, candidate_lengths[i] - 1):
                             traj_pair_dists[len(self.traj_map[i]) + k][len(self.traj_map[i]) + m] = \
                                 traj_pair_dists[len(self.traj_map[i]) + m][len(self.traj_map[i]) + k] = \
-                            batch_distances[i][
-                                candidate_lengths[
-                                    i] - 2 - k] + \
-                            batch_distances[i][
-                                candidate_lengths[
-                                    i] - 2 - m]
+                                batch_distances[i][
+                                    candidate_lengths[
+                                        i] - 2 - k] + \
+                                batch_distances[i][
+                                    candidate_lengths[
+                                        i] - 2 - m]
 
                 traj_pair_dists = traj_pair_dists[::-1, ::-1]
 

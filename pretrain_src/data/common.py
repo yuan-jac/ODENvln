@@ -7,7 +7,6 @@ import numpy as np
 import torch
 from torch.nn.utils.rnn import pad_sequence
 
-
 def pad_tensors(tensors, lens=None, pad=0):
     """B x [T, ...] torch tensors"""
     if lens is None:
@@ -24,7 +23,6 @@ def pad_tensors(tensors, lens=None, pad=0):
     for i, (t, l) in enumerate(zip(tensors, lens)):
         output.data[i, :l, ...] = t.data
     return output
-
 
 def gen_seq_masks(seq_lens, max_len=None):
     """
@@ -43,7 +41,6 @@ def gen_seq_masks(seq_lens, max_len=None):
     masks = masks < seq_lens.reshape(-1, 1)
     return masks
 
-
 def get_angle_fts(headings, elevations, angle_feat_size=4):
     ang_fts = [np.sin(headings), np.cos(headings), np.sin(elevations), np.cos(elevations)]
     ang_fts = np.vstack(ang_fts).transpose().astype(np.float32)
@@ -51,7 +48,6 @@ def get_angle_fts(headings, elevations, angle_feat_size=4):
     if num_repeats > 1:
         ang_fts = np.concatenate([ang_fts] * num_repeats, 1)
     return ang_fts
-
 
 def get_view_rel_angles(baseViewId=0):
     rel_angles = np.zeros((36, 2), dtype=np.float32)
@@ -106,7 +102,6 @@ def load_nav_graphs(connectivity_dir):
         shortest_distances[scan] = dict(nx.all_pairs_dijkstra_path_length(G))
         shortest_paths[scan] = dict(nx.all_pairs_dijkstra_path(G))
     return graphs, shortest_distances, shortest_paths
-
 
 def softmax(logits, dim=1):
     # logits: (n, d)

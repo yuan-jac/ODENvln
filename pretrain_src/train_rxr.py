@@ -154,7 +154,7 @@ def main(opts):
         data_cfg.train_traj_files, data_cfg.img_ft_file,
         data_cfg.scanvp_cands_file, data_cfg.connectivity_dir,
         image_prob_size=model_config.image_prob_size,
-        image_feat_size=model_config.image_feat_size,
+        image_feat_size=model_config.image_feat_size, 
         angle_feat_size=model_config.angle_feat_size,
         max_txt_len=opts.max_txt_len, in_memory=False, is_train=True,
     )
@@ -162,7 +162,7 @@ def main(opts):
         data_cfg.val_seen_traj_files, data_cfg.img_ft_file,
         data_cfg.scanvp_cands_file, data_cfg.connectivity_dir,
         image_prob_size=model_config.image_prob_size,
-        image_feat_size=model_config.image_feat_size,
+        image_feat_size=model_config.image_feat_size, 
         angle_feat_size=model_config.angle_feat_size,
         max_txt_len=opts.max_txt_len, in_memory=False, is_train=False,
     )
@@ -170,7 +170,7 @@ def main(opts):
         data_cfg.val_unseen_traj_files, data_cfg.img_ft_file,
         data_cfg.scanvp_cands_file, data_cfg.connectivity_dir,
         image_prob_size=model_config.image_prob_size,
-        image_feat_size=model_config.image_feat_size,
+        image_feat_size=model_config.image_feat_size, 
         angle_feat_size=model_config.angle_feat_size,
         max_txt_len=opts.max_txt_len, in_memory=False, is_train=False,
     )
@@ -322,7 +322,7 @@ def main(opts):
         validate(model, val_dataloaders, setname='_seen')
         LOGGER.info(f'------Step {global_step}: start validation unseen------')
         validate(model, val2_dataloaders, setname='_unseen')
-        model_saver.save(model, global_step)
+        model_saver.save(model, global_step)   
 
 
 def validate(model, val_dataloaders, setname=''):
@@ -372,13 +372,11 @@ def validate_mlm(model, val_loader):
                 f"acc: {acc * 100:.2f}")
     return val_log
 
-
 def compute_accuracy_for_soft_targets(out, labels):
     outputs = out.max(dim=-1)[1]
     labels = labels.max(dim=-1)[1]  # argmax
     n_correct = (outputs == labels).sum().item()
     return n_correct
-
 
 @torch.no_grad()
 def validate_mrc(model, val_loader):
@@ -442,7 +440,6 @@ def validate_sap(model, val_loader):
                 f"gacc: {gacc * 100:.2f}, lacc: {lacc * 100:.2f}, facc: {facc * 100:.2f}")
     return val_log
 
-
 def build_args():
     parser = load_parser()
 
@@ -456,7 +453,6 @@ def build_args():
         )
 
     return opts
-
 
 if __name__ == '__main__':
     args = build_args()

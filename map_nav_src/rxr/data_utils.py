@@ -38,7 +38,6 @@ def load_instr_datasets(anno_dir, dataset, splits, tokenizer, is_test=True):
         data += new_data
     return data
 
-
 def construct_instrs(anno_dir, dataset, splits, tokenizer, max_instr_len=512, is_test=True):
     data = []
     for i, item in enumerate(load_instr_datasets(anno_dir, dataset, splits, tokenizer, is_test=is_test)):

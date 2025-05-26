@@ -17,14 +17,11 @@ def normalize_angle(x):
         x = x - pi2
     return x
 
-
 def convert_heading(x):
     return x % (2 * math.pi) / (2 * math.pi)  # [0, 2pi] -> [0, 1)
 
-
 def convert_elevation(x):
     return (normalize_angle(x) + math.pi) / (2 * math.pi)  # [0, 2pi] -> [0, 1)
-
 
 def load_instr_datasets(anno_dir, dataset, splits):
     assert dataset == 'soon'
@@ -54,7 +51,6 @@ def load_instr_datasets(anno_dir, dataset, splits):
         # Join
         data += new_data
     return data
-
 
 def construct_instrs(anno_dir, dataset, splits, instr_type='full', tokenizer=None, max_instr_len=512):
     assert dataset == 'soon'
@@ -86,7 +82,7 @@ class ObjectFeatureDB(object):
             with h5py.File(self.obj_ft_file, 'r') as f:
                 obj_attrs = {}
                 if key in f:
-                    obj_fts = f[key][...][:, :self.obj_feat_size].astype(np.float32)
+                    obj_fts = f[key][...][:, :self.obj_feat_size].astype(np.float32) 
                     for attr_key, attr_value in f[key].attrs.items():
                         if attr_key in ['directions', 'bboxes', 'obj_ids']:
                             obj_attrs[attr_key] = attr_value

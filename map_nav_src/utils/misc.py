@@ -11,7 +11,6 @@ def set_random_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
 
-
 def length2mask(length, size=None):
     batch_size = len(length)
     size = int(max(length)) if size is None else size

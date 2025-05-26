@@ -92,7 +92,7 @@ def parse_args():
     # # A2C
     parser.add_argument("--gamma", default=0.9, type=float, help='reward discount factor')
     parser.add_argument(
-        "--normalize", dest="normalize_loss", default="total",
+        "--normalize", dest="normalize_loss", default="total", 
         type=str, help='batch or total'
     )
     parser.add_argument('--train_alg',
@@ -112,7 +112,8 @@ def postprocess_args(args):
 
     # Setup input paths
     ft_file_map = {
-        'vitbase': 'pth_vit_base_patch16_224_imagenet.hdf5',
+        'vitbase': 'dino_features_36_vit_b14.hdf5',
+        'dino_imagenet': 'dino_features_36_1768dim.hdf5',
     }
     args.img_ft_file = os.path.join(ROOTDIR, 'R2R', 'features')
 
@@ -132,3 +133,4 @@ def postprocess_args(args):
     os.makedirs(args.pred_dir, exist_ok=True)
 
     return args
+

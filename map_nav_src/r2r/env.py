@@ -28,15 +28,14 @@ def load_viewpoint_ids(connectivity_dir):
     print('Loaded %d viewpoints' % len(viewpoint_ids))
     return viewpoint_ids
 
-
 TSV_FIELDNAMES = ['scanId', 'viewpointId', 'image_w', 'image_h', 'vfov', 'features']
 VIEWPOINT_SIZE = 36  # Number of discretized views from one viewpoint
 
 WIDTH = 128
 HEIGHT = 128
 VFOV = 60
-GLOBAL_WIDTH = 14
-GLOBAL_HEIGHT = 14
+GLOBAL_WIDTH = 16
+GLOBAL_HEIGHT = 16
 
 ERROR_MARGIN = 3.0
 MAX_DIST = 30  # normalize
@@ -51,7 +50,6 @@ def get_angle_fts(headings, elevations, angle_feat_size=4):
     if num_repeats > 1:
         ang_fts = np.concatenate([ang_fts] * num_repeats, 1)
     return ang_fts
-
 
 def calculate_vp_rel_pos_fts(a, b, base_heading=0, base_elevation=0):
     # a, b: (x, y, z)
@@ -93,7 +91,7 @@ class DepthFeaturesDB(object):
 
 class SemanticFeaturesDB(object):
     def __init__(self, img_ft_file):
-        self.image_feat_size = 7 * 7 + 1
+        self.image_feat_size = 8 * 8
         self.img_ft_file = img_ft_file
         self._feature_store = {}
 
@@ -110,13 +108,34 @@ class SemanticFeaturesDB(object):
 
 
 def get_rel_position(depth_map, angle):
-    depth_y = depth_map.astype(np.float32) / 4000.
+    """
+    计算深度图中每个像素相对于观察点的相对位置坐标
 
-    depth_x = depth_y * (
-            np.array([-6 / 7, -4 / 7, -2 / 7, 0., 2 / 7, 4 / 7, 6 / 7] * 7, np.float32) * math.tan(math.pi / 6))
+    参数:
+        depth_map (np.ndarray): 深度图数据，表示每个像素的深度值
+        angle (float): 观察角度（弧度），用于坐标变换
+
+    返回:
+        tuple: (rel_x, rel_y) 两个数组，表示每个像素点相对于观察点的x和y坐标
+
+    说明:
+        该函数将深度图转换为相对坐标，考虑了观察角度的影响，用于构建全局地图
+    """
+    h, w = depth_map.shape  # 支持任意尺寸，比如 8x8
+    depth_y = depth_map.astype(np.float32) / 4000.  # 深度值归一化
+
+    # 构造水平方向偏移索引（范围从 -1 到 1）
+    x_index = np.linspace(-1, 1, w, dtype=np.float32)
+    x_offset = np.tile(x_index, (h, 1)) * math.tan(math.pi / 6)  # 假设水平视角为60°
+
+    depth_x = depth_y * x_offset  # 计算x方向的深度投影
+
+    # 根据观察角度进行坐标旋转变换
     rel_x = depth_x * math.cos(angle) + depth_y * math.sin(angle)
     rel_y = depth_y * math.cos(angle) - depth_x * math.sin(angle)
+
     return rel_x, rel_y
+
 
 
 class EnvBatch(object):
@@ -163,7 +182,7 @@ class EnvBatch(object):
             self.sims.append(sim)
 
         self.DepthDB = DepthFeaturesDB(os.path.join(semantic_map_dir, "depth.hdf5"))
-        self.SemanticDB = SemanticFeaturesDB(os.path.join(semantic_map_dir, "clip_p32.hdf5"))
+        self.SemanticDB = SemanticFeaturesDB(os.path.join(semantic_map_dir, "siglip2_p32_256.hdf5"))
         self.viewpoint_info = json.load(open(os.path.join(semantic_map_dir, "viewpoint_info.json")))
         self.feature_states = [None for i in range(len(self.sims))]
 
@@ -231,11 +250,11 @@ class EnvBatch(object):
             sRotatex = target_position_x * math.cos(angle) + target_position_y * math.sin(angle)
             sRotatey = target_position_y * math.cos(angle) - target_position_x * math.sin(angle)
 
-            target_patch_x = int((sRotatex + half_len) * 14 // (2 * half_len))
-            target_patch_y = int((sRotatey + half_len) * 14 // (2 * half_len))
-            target_patch_x = min(max(target_patch_x, 0), 13)
-            target_patch_y = min(max(target_patch_y, 0), 13)
-            target_patch_id = 1 + target_patch_x * 14 + target_patch_y
+            target_patch_x = int((sRotatex + half_len) * 16 // (2 * half_len))
+            target_patch_y = int((sRotatey + half_len) * 16 // (2 * half_len))
+            target_patch_x = min(max(target_patch_x, 0), 15)
+            target_patch_y = min(max(target_patch_y, 0), 15)
+            target_patch_id = 1 + target_patch_x * 16 + target_patch_y
             target_patch_ids.append(target_patch_id)
 
         return target_patch_ids
@@ -258,6 +277,7 @@ class EnvBatch(object):
                     [rel_dist / MAX_DIST]
                 )
 
+
         rel_angles = np.array(rel_angles).astype(np.float32)
         rel_dists = np.array(rel_dists).astype(np.float32)
         rel_ang_fts = get_angle_fts(rel_angles[:, 0], rel_angles[:, 1])
@@ -276,7 +296,7 @@ class EnvBatch(object):
         viewpoint_x_list = []
         viewpoint_y_list = []
         depth = self.DepthDB.get_image_feature(scan_id, viewpoint_id)
-        patch_center_index = np.array([9 + i * 18 for i in range(7)])
+        patch_center_index = np.array([8 + i * 16 for i in range(8)])
 
         depth = depth[:, patch_center_index][:, :, patch_center_index].reshape(36, -1)
 
@@ -294,14 +314,20 @@ class EnvBatch(object):
 
         semantic = self.SemanticDB.get_image_feature(scan_id, viewpoint_id)
 
-        if len(self.global_semantic[i]) == 0:
-            self.global_semantic[i] = semantic[:, 1:].reshape((-1, 768))
-            self.global_map[i] = np.zeros((12 * 49,))
+        semantic_feat = semantic.reshape((-1, 768))
+
+        zero_padding = np.zeros((12 * 64,))
+
+        if (self.global_semantic[i] is None
+                or not isinstance(self.global_semantic[i], np.ndarray)
+                or self.global_semantic[i].size == 0):
+
+            self.global_semantic[i] = semantic_feat
+            self.global_map[i] = zero_padding
 
         else:
-            self.global_semantic[i] = np.concatenate((self.global_semantic[i], semantic[:, 1:].reshape((-1, 768))),
-                                                     axis=0)
-            self.global_map[i] = np.concatenate([self.global_map[i], np.zeros((12 * 49,))], 0)
+            self.global_semantic[i] = np.concatenate([self.global_semantic[i], semantic_feat], axis=0)
+            self.global_map[i] = np.concatenate([self.global_map[i], zero_padding], axis=0)
 
         self.global_map[i].fill(-1)
         position_x = np.concatenate(viewpoint_x_list, 0)
@@ -363,7 +389,7 @@ class EnvBatch(object):
 
         label_index = (global_mask == 1)
 
-        map_index = map_x * 14 + map_y
+        map_index = map_x * 16 + map_y
         map_index = map_index.reshape(-1)
         label_index = label_index.reshape(-1)
 
@@ -429,7 +455,7 @@ class R2RNavBatch(object):
         # in validation, we would split the data
         if sel_data_idxs is not None:
             t_split, n_splits = sel_data_idxs
-            ndata_per_split = len(self.data) // n_splits
+            ndata_per_split = len(self.data) // n_splits 
             start_idx = ndata_per_split * t_split
             if t_split == n_splits - 1:
                 end_idx = None
@@ -506,7 +532,6 @@ class R2RNavBatch(object):
     def make_candidate(self, feature, scanId, viewpointId, viewId):
         def _loc_distance(loc):
             return np.sqrt(loc.rel_heading ** 2 + loc.rel_elevation ** 2).astype(np.float32)
-
         base_heading = (viewId % 12) * math.radians(30)
         base_elevation = (viewId // 12 - 1) * math.radians(30)
 

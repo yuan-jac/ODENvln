@@ -73,7 +73,7 @@ class RAdam(Optimizer):
                     p_data_fp32.add_(-group['weight_decay'] * group['lr'], p_data_fp32)
 
                 # more conservative since it's an approximated value
-                if N_sma >= 5:
+                if N_sma >= 5:            
                     denom = exp_avg_sq.sqrt().add_(group['eps'])
                     p_data_fp32.addcdiv_(-step_size * group['lr'], exp_avg, denom)
                 else:
@@ -82,7 +82,6 @@ class RAdam(Optimizer):
                 p.data.copy_(p_data_fp32)
 
         return loss
-
 
 class PlainRAdam(Optimizer):
 

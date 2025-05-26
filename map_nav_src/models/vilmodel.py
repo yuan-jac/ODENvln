@@ -21,6 +21,7 @@ clip_config = edict({
     'transformer_dropout_rate': 0.
 })
 
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -46,10 +47,10 @@ def swish(x):
 ACT2FN = {"gelu": gelu, "relu": torch.nn.functional.relu, "swish": swish}
 
 
+
 class BertEmbeddings(nn.Module):
     """Construct the embeddings from word, position and token_type embeddings.
     """
-
     def __init__(self, config):
         super(BertEmbeddings, self).__init__()
         self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=0)
@@ -79,7 +80,6 @@ class BertEmbeddings(nn.Module):
         embeddings = self.LayerNorm(embeddings)
         embeddings = self.dropout(embeddings)
         return embeddings
-
 
 class BertSelfAttention(nn.Module):
     def __init__(self, config):
@@ -145,7 +145,6 @@ class BertSelfAttention(nn.Module):
         outputs = (context_layer, attention_scores) if self.output_attentions else (context_layer,)
         return outputs
 
-
 class BertSelfOutput(nn.Module):
     def __init__(self, config):
         super(BertSelfOutput, self).__init__()
@@ -159,7 +158,6 @@ class BertSelfOutput(nn.Module):
         hidden_states = self.LayerNorm(hidden_states + input_tensor)
         return hidden_states
 
-
 class BertAttention(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -171,7 +169,6 @@ class BertAttention(nn.Module):
         attention_output = self.output(self_outputs[0], input_tensor)
         outputs = (attention_output,) + self_outputs[1:]  # add attentions if we output them
         return outputs
-
 
 class BertIntermediate(nn.Module):
     def __init__(self, config):
@@ -187,7 +184,6 @@ class BertIntermediate(nn.Module):
         hidden_states = self.intermediate_act_fn(hidden_states)
         return hidden_states
 
-
 class BertOutput(nn.Module):
     def __init__(self, config):
         super(BertOutput, self).__init__()
@@ -200,7 +196,6 @@ class BertOutput(nn.Module):
         hidden_states = self.dropout(hidden_states)
         hidden_states = self.LayerNorm(hidden_states + input_tensor)
         return hidden_states
-
 
 class BertLayer(nn.Module):
     def __init__(self, config):
@@ -216,7 +211,6 @@ class BertLayer(nn.Module):
         layer_output = self.output(intermediate_output, attention_output)
         outputs = (layer_output,) + attention_outputs[1:]  # add attentions if we output them
         return outputs
-
 
 class BertEncoder(nn.Module):
     def __init__(self, config):
@@ -252,7 +246,6 @@ class BertEncoder(nn.Module):
             outputs = outputs + (all_attentions,)
         return outputs  # last-layer hidden state, (all hidden states), (all attentions)
 
-
 class BertPooler(nn.Module):
     def __init__(self, config):
         super(BertPooler, self).__init__()
@@ -266,7 +259,6 @@ class BertPooler(nn.Module):
         pooled_output = self.dense(first_token_tensor)
         pooled_output = self.activation(pooled_output)
         return pooled_output
-
 
 class BertPredictionHeadTransform(nn.Module):
     def __init__(self, config):
@@ -283,7 +275,6 @@ class BertPredictionHeadTransform(nn.Module):
         hidden_states = self.transform_act_fn(hidden_states)
         hidden_states = self.LayerNorm(hidden_states)
         return hidden_states
-
 
 class BertLMPredictionHead(nn.Module):
     def __init__(self, config):
@@ -303,7 +294,6 @@ class BertLMPredictionHead(nn.Module):
         hidden_states = self.decoder(hidden_states) + self.bias
         return hidden_states
 
-
 class BertOnlyMLMHead(nn.Module):
     def __init__(self, config):
         super(BertOnlyMLMHead, self).__init__()
@@ -312,7 +302,6 @@ class BertOnlyMLMHead(nn.Module):
     def forward(self, sequence_output):
         prediction_scores = self.predictions(sequence_output)
         return prediction_scores
-
 
 class BertOutAttention(nn.Module):
     def __init__(self, config, ctx_dim=None):
@@ -367,7 +356,6 @@ class BertOutAttention(nn.Module):
         context_layer = context_layer.view(*new_context_layer_shape)
         return context_layer, attention_scores
 
-
 class BertXAttention(nn.Module):
     def __init__(self, config, ctx_dim=None):
         super().__init__()
@@ -378,7 +366,6 @@ class BertXAttention(nn.Module):
         output, attention_scores = self.att(input_tensor, ctx_tensor, ctx_att_mask)
         attention_output = self.output(output, input_tensor)
         return attention_output, attention_scores
-
 
 class GraphLXRTXLayer(nn.Module):
     def __init__(self, config):
@@ -401,7 +388,7 @@ class GraphLXRTXLayer(nn.Module):
     def forward(
             self, lang_feats, lang_attention_mask, visn_feats, visn_attention_mask,
             graph_sprels=None
-    ):
+    ):      
         visn_att_output = self.visual_attention(
             visn_feats, lang_feats, ctx_att_mask=lang_attention_mask
         )[0]
@@ -427,7 +414,6 @@ class GraphLXRTXLayer(nn.Module):
         lang_inter_output = self.lang_inter(lang_att_output)
         lang_output = self.lang_output(lang_inter_output, lang_att_output)
         return lang_output
-
 
 class LanguageEncoder(nn.Module):
     def __init__(self, config):
@@ -465,12 +451,11 @@ class CrossmodalEncoder(nn.Module):
         extended_img_masks = extend_neg_masks(img_masks)  # (N, 1(H), 1(L_q), L_v)
         for layer_module in self.x_layers:
             img_embeds = layer_module(
-                txt_embeds, extended_txt_masks,
+                txt_embeds, extended_txt_masks, 
                 img_embeds, extended_img_masks,
                 graph_sprels=graph_sprels
             )
         return img_embeds
-
 
 class ImageEmbeddings(nn.Module):
     def __init__(self, config):
@@ -580,7 +565,6 @@ class LocalVPEncoder(nn.Module):
         vp_embeds = self.encoder(txt_embeds, txt_masks, vp_embeds, vp_masks)
         return vp_embeds
 
-
 class GlobalMapEncoder(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -626,7 +610,7 @@ class GlobalMapEncoder(nn.Module):
         batch_gmap_img_fts = pad_tensors_wgrad(batch_gmap_img_fts)
         # add a [stop] token at beginning
         batch_gmap_img_fts = torch.cat(
-            [torch.zeros(batch_size, 1, batch_gmap_img_fts.size(2)).to(device), batch_gmap_img_fts],
+            [torch.zeros(batch_size, 1, batch_gmap_img_fts.size(2)).to(device), batch_gmap_img_fts], 
             dim=1
         )
         return batch_gmap_img_fts
@@ -678,7 +662,6 @@ class ClsPrediction(nn.Module):
 
     def forward(self, x):
         return self.net(x)
-
 
 class GlocalTextPathNavCMT(BertPreTrainedModel):
     def __init__(self, config):
@@ -800,8 +783,7 @@ class GlocalTextPathNavCMT(BertPreTrainedModel):
     ):
 
         batch_size = len(grid_fts)
-        grid_map_input = torch.zeros(batch_size, 14 * 14, 768).to(grid_fts[0].device)
-
+        grid_map_input = torch.zeros(batch_size, 16 * 16, 768).to(grid_fts[0].device)
         text_fts = self.text_proj(txt_embeds).permute(0, 2, 1)
         grid_masks = [[] for b in range(batch_size)]
         max_cell_num = 0
@@ -811,7 +793,7 @@ class GlocalTextPathNavCMT(BertPreTrainedModel):
             grid_fts_weight, _ = (tmp_fts @ text_fts[b]).max(dim=-1)
             tmp_fts = self.grid_proj(tmp_fts)
             # print(f"tmp_fts dtype: {tmp_fts.dtype}, text_fts[b] dtype: {text_fts[b].dtype}")
-            for i in range(14 * 14):
+            for i in range(16 * 16):
                 cell_fts = tmp_fts[grid_map[b] == i]
                 if cell_fts.shape[0] == 0:
                     grid_masks[b].append(0)
@@ -939,10 +921,11 @@ class GlocalTextPathNavCMT(BertPreTrainedModel):
 
         elif mode == 'navigation':
             return self.forward_navigation_per_step(
-                batch['txt_embeds'], batch['txt_masks'], batch['gmap_img_embeds'],
+                batch['txt_embeds'], batch['txt_masks'], batch['gmap_img_embeds'], 
                 batch['gmap_step_ids'], batch['gmap_pos_fts'], batch['gmap_masks'],
-                batch['gmap_pair_dists'], batch['gmap_visited_masks'], batch['gmap_vpids'],
+                batch['gmap_pair_dists'], batch['gmap_visited_masks'], batch['gmap_vpids'], 
                 batch['vp_img_embeds'], batch['vp_pos_fts'], batch['vp_masks'],
                 batch['vp_nav_masks'], batch['vp_obj_masks'], batch['vp_cand_vpids'], batch['grid_fts'],
                 batch['grid_map'], batch['gridmap_pos_fts']
             )
+        return None

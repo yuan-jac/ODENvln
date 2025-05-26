@@ -1,27 +1,56 @@
 '''
-Instruction and trajectory (view and object features) dataset
+视觉导航数据集处理模块
+
+本模块提供了处理视觉导航任务所需的数据集功能，包括：
+1. 加载和处理指令文本
+2. 处理视觉特征（场景视图和物体特征）
+3. 构建导航轨迹
+4. 生成训练和评估所需的输入数据
+
+主要组件：
+- 深度特征数据库 (DepthFeaturesDB)
+- 语义特征数据库 (SemanticFeaturesDB)
+- 视觉导航数据集基类 (ReverieTextPathData)
+- R2R数据集处理类 (R2RTextPathData)
+- SOON数据集处理类 (SoonTextPathData)
 '''
 import math
 import os
 import random
-
+from collections import defaultdict
 import jsonlines
 import numpy as np
+import torch
 
 from .common import calculate_vp_rel_pos_fts
 from .common import get_angle_fts, get_view_rel_angles
 from .common import load_nav_graphs
 from .common import softmax
 
-MAX_DIST = 30  # normalize
-MAX_STEP = 10  # normalize
-TRAIN_MAX_STEP = 20
+# 归一化参数
+MAX_DIST = 30  # 距离归一化最大值（米）
+MAX_STEP = 10  # 评估阶段步数归一化最大值
+TRAIN_MAX_STEP = 20  # 训练阶段最大步数限制
 
 import json
 import h5py
 
 
 def load_viewpoint_ids(connectivity_dir):
+    """
+    从连接图数据中加载所有可用的视点ID
+    
+    参数:
+        connectivity_dir (str): 包含场景连接图数据的目录路径
+        
+    返回:
+        list: 包含(场景ID, 视点ID)元组的列表，每个元组代表一个可用的观察点
+        
+    说明:
+        - 首先从scans.txt文件中读取所有场景ID
+        - 然后对每个场景加载其连接图(connectivity.json)
+        - 仅包含标记为included的视点
+    """
     viewpoint_ids = []
     with open(os.path.join(connectivity_dir, 'scans.txt')) as f:
         scans = [x.strip() for x in f]
@@ -33,54 +62,169 @@ def load_viewpoint_ids(connectivity_dir):
     return viewpoint_ids
 
 
-TSV_FIELDNAMES = ['scanId', 'viewpointId', 'image_w', 'image_h', 'vfov', 'features']
-VIEWPOINT_SIZE = 36  # Number of discretized views from one viewpoint
+# 数据结构相关常量
+TSV_FIELDNAMES = ['scanId', 'viewpointId', 'image_w', 'image_h', 'vfov', 'features']  # TSV文件字段名
+VIEWPOINT_SIZE = 36  # 每个视点的离散视角数量
 
-WIDTH = 128
-HEIGHT = 128
-VFOV = 60
-GLOBAL_WIDTH = 16
-GLOBAL_HEIGHT = 16
+# 图像和地图尺寸参数
+WIDTH = 128  # 图像宽度（像素）
+HEIGHT = 128  # 图像高度（像素）
+VFOV = 60  # 垂直视场角（度）
+GLOBAL_WIDTH = 16  # 全局地图宽度（网格单元）
+GLOBAL_HEIGHT = 16  # 全局地图高度（网格单元）
 
-ERROR_MARGIN = 3.0
+# 导航评估参数
+ERROR_MARGIN = 3.0  # 到达目标的误差容限（米）
+
 
 
 class DepthFeaturesDB(object):
+    """
+    深度特征数据库类
+    
+    用于加载和管理场景中各视点的深度特征。深度特征用于构建场景的3D结构理解，
+    存储在HDF5格式的文件中。每个视点的深度特征以uint16类型存储，表示场景中
+    物体的深度信息。
+    """
     def __init__(self, img_ft_file):
+        """
+        初始化深度特征数据库
+        
+        参数:
+            img_ft_file (str): HDF5格式的深度特征文件路径
+        """
         self.img_ft_file = img_ft_file
         self._feature_store = h5py.File(self.img_ft_file, 'r')
 
     def get_image_feature(self, scan, viewpoint):
+        """
+        获取指定场景和视点的深度特征
+        
+        参数:
+            scan (str): 场景ID
+            viewpoint (str): 视点ID
+            
+        返回:
+            np.ndarray: 深度特征数组，类型为uint16，表示场景中物体的深度值
+        """
         key = '%s_%s' % (scan, viewpoint)
-
         ft = self._feature_store[key][...][:].astype(np.uint16)
-
         return ft
 
 
 class SemanticFeaturesDB(object):
+    """
+    语义特征数据库类
+    
+    用于加载和管理场景中各视点的语义特征。语义特征用于理解场景中的物体和
+    空间关系，存储在HDF5格式的文件中。每个视点的语义特征以float32类型存储，
+    表示场景中物体的语义信息。
+    """
     def __init__(self, img_ft_file):
+        """
+        初始化语义特征数据库
+        
+        参数:
+            img_ft_file (str): HDF5格式的语义特征文件路径
+        """
         self.img_ft_file = img_ft_file
         self._feature_store = h5py.File(self.img_ft_file, 'r')
 
     def get_image_feature(self, scan, viewpoint):
+        """
+        获取指定场景和视点的语义特征
+        
+        参数:
+            scan (str): 场景ID
+            viewpoint (str): 视点ID
+            
+        返回:
+            np.ndarray: 语义特征数组，类型为float32，表示场景中物体的语义嵌入
+        """
         key = '%s_%s' % (scan, viewpoint)
-
         ft = self._feature_store[key][...][:].astype(np.float32)
-
         return ft
 
 
+class SingleTextDescriptionDB(object):
+    """
+    文本描述特征数据库类，用于加载和管理场景中各视点的文本描述嵌入向量。
+    
+    该类支持两种类型的文本描述：
+    1. object: 描述视点中可见物体的文本嵌入
+    2. spatial: 描述视点中空间关系的文本嵌入
+    
+    每个视点包含36个视角(view)，每个视角对应一个文本描述嵌入向量。
+    """
+
+    def __init__(self, pt_file, mode='object'):
+        """
+        初始化文本描述数据库
+        
+        参数:
+            pt_file (str): 包含预训练文本嵌入的PyTorch文件路径
+            mode (str): 文本描述类型，可选值为'object'或'spatial'
+        """
+        assert mode in ['object', 'spatial']
+        self.mode = mode
+        # 默认为每个视点的36个视角创建零向量(维度768)
+        self.text_data = defaultdict(lambda: [torch.zeros(768)] * 36)
+
+        if not os.path.exists(pt_file):
+            print(f"[Warning] TextDescriptionDB: file not found at {pt_file}")
+            return
+
+        # 加载预训练的文本嵌入
+        loaded = torch.load(pt_file)
+        embeddings = loaded[f'{mode}_embeddings']  # 例如 object_embeddings
+        meta_infos = loaded['meta_infos']
+
+        # 将嵌入向量映射到对应的场景-视点-视角
+        for info, emb in zip(meta_infos, embeddings):
+            key = f"{info['scan_id']}_{info['viewpoint_id']}"
+            idx = info['view_index']
+            if self.text_data[key][idx] is None:
+                self.text_data[key][idx] = emb
+
+    def get_text_features(self, scan, viewpoint):
+        """
+        获取指定场景和视点的所有视角文本特征
+        
+        参数:
+            scan (str): 场景ID
+            viewpoint (str): 视点ID
+            
+        返回:
+            List[torch.Tensor]: 包含36个文本嵌入向量的列表，每个向量维度为768
+                               对应视点的36个不同视角的文本描述
+        """
+        key = f"{scan}_{viewpoint}"
+        return self.text_data[key]  # List[Tensor[768]] (长度36)
+    
 def get_rel_position(depth_map, angle):
+    """
+    计算深度图中每个像素相对于观察点的相对位置坐标
+    
+    参数:
+        depth_map (np.ndarray): 深度图数据，表示每个像素的深度值
+        angle (float): 观察角度（弧度），用于坐标变换
+        
+    返回:
+        tuple: (rel_x, rel_y) 两个数组，表示每个像素点相对于观察点的x和y坐标
+        
+    说明:
+        该函数将深度图转换为相对坐标，考虑了观察角度的影响，用于构建全局地图
+    """
     h, w = depth_map.shape  # 支持任意尺寸，比如 8x8
-    depth_y = depth_map.astype(np.float32) / 4000.
+    depth_y = depth_map.astype(np.float32) / 4000.  # 深度值归一化
 
     # 构造水平方向偏移索引（范围从 -1 到 1）
     x_index = np.linspace(-1, 1, w, dtype=np.float32)
     x_offset = np.tile(x_index, (h, 1)) * math.tan(math.pi / 6)  # 假设水平视角为60°
 
-    depth_x = depth_y * x_offset
+    depth_x = depth_y * x_offset  # 计算x方向的深度投影
 
+    # 根据观察角度进行坐标旋转变换
     rel_x = depth_x * math.cos(angle) + depth_y * math.sin(angle)
     rel_y = depth_y * math.cos(angle) - depth_x * math.sin(angle)
 
@@ -88,6 +232,16 @@ def get_rel_position(depth_map, angle):
 
 
 class ReverieTextPathData(object):
+    """
+    REVERIE数据集的路径数据处理基类
+    
+    该类负责加载和处理REVERIE数据集中的导航路径数据，包括：
+    - 图像特征（场景视图）
+    - 物体特征
+    - 文本指令
+    - 导航路径
+    - 全局和局部地图信息
+    """
     def __init__(
             self, anno_files, img_ft_file, obj_ft_file, scanvp_cands_file, connectivity_dir,
             image_feat_size=768, image_prob_size=0, angle_feat_size=4,
@@ -95,6 +249,27 @@ class ReverieTextPathData(object):
             max_txt_len=100, in_memory=True, is_train=False, act_visited_node=False,
             semantic_map_dir="../datasets/R2R/features"
     ):
+        """
+        初始化REVERIE路径数据处理器
+        
+        参数:
+            anno_files (list): 包含数据集标注的文件路径列表
+            img_ft_file (str): 图像特征文件路径
+            obj_ft_file (str): 物体特征文件路径
+            scanvp_cands_file (str): 视点候选文件路径
+            connectivity_dir (str): 场景连接图数据目录
+            image_feat_size (int): 图像特征维度，默认768
+            image_prob_size (int): 图像概率特征维度，默认0
+            angle_feat_size (int): 角度特征维度，默认4
+            obj_feat_size (int): 物体特征维度
+            obj_prob_size (int): 物体概率特征维度
+            max_objects (int): 每个视点最大物体数量，默认20
+            max_txt_len (int): 文本指令最大长度，默认100
+            in_memory (bool): 是否将特征加载到内存，默认True
+            is_train (bool): 是否为训练模式，默认False
+            act_visited_node (bool): 是否只考虑已访问节点的动作，默认False
+            semantic_map_dir (str): 语义地图特征目录
+        """
         self.is_train = is_train
         self.img_ft_file = img_ft_file
         self.obj_ft_file = obj_ft_file
@@ -144,10 +319,19 @@ class ReverieTextPathData(object):
 
         self.DepthDB = DepthFeaturesDB(os.path.join(semantic_map_dir, "depth.hdf5"))
         self.SemanticDB = SemanticFeaturesDB(os.path.join(semantic_map_dir, "siglip2_p32_256.hdf5"))
+        self.ObjectTextDB = SingleTextDescriptionDB(
+            '/home/files/A/zhanghuaxiang3/GridMM/datasets//R2R/features/object_embeddings-base.pt',
+            mode='object'
+        )
+        self.SpatialTextDB = SingleTextDescriptionDB(
+            '/home/files/A/zhanghuaxiang3/GridMM/datasets//R2R/features/spatial_embeddings-base.pt',
+            mode='spatial'
+        )
         self.viewpoint_info = json.load(open(os.path.join(semantic_map_dir, "viewpoint_info.json")))
         self.cur_vp = None
 
         self.gt_path = None
+
 
     def __len__(self):
         return len(self.data)
@@ -225,102 +409,160 @@ class ReverieTextPathData(object):
             self, idx, end_vp_type, return_img_probs=False, return_act_label=False,
             return_obj_label=False, end_vp=None
     ):
+        """
+        生成模型输入数据
+        
+        参数:
+            idx (int): 数据索引
+            end_vp_type (str): 终点视点类型，可选值为:
+                - 'pos': 从正样本视点中选择
+                - 'neg_in_gt_path': 从真实路径中的非正样本视点选择
+                - 'neg_others': 从其他非路径视点中选择
+            return_img_probs (bool): 是否返回图像概率特征
+            return_act_label (bool): 是否返回动作标签
+            return_obj_label (bool): 是否返回物体标签
+            end_vp (str): 指定的终点视点ID，如果为None则根据end_vp_type选择
+            
+        返回:
+            dict: 包含模型输入所需的所有特征和标签
+        """
         item = self.data[idx]
         scan = item['scan']
         start_vp = item['path'][0]
         start_heading = item.get('heading', 0)
         self.cur_vp = start_vp
         self.heading = start_heading
-        pos_vps = item['pos_vps']
-        gt_path = item['path']
+        pos_vps = item['pos_vps']  # 正样本视点列表
+        gt_path = item['path']  # 真实路径
 
+        # 根据end_vp_type选择终点视点
         if end_vp is None:
             if end_vp_type == 'pos':
+                # 从正样本视点中随机选择
                 end_vp = pos_vps[np.random.randint(len(pos_vps))]
             elif end_vp_type == 'neg_in_gt_path':
+                # 从真实路径中的非正样本视点随机选择
                 end_vps = [vp for vp in gt_path if vp not in pos_vps]
                 if len(end_vps) == 0:
                     end_vps = gt_path
                 end_vp = end_vps[np.random.randint(len(end_vps))]
             elif end_vp_type == 'neg_others':
+                # 从其他非路径视点随机选择
                 noneg_vp_set = set(pos_vps + gt_path)
                 end_vps = [vp for vp in self.graphs[scan].nodes.keys() if vp not in noneg_vp_set]
                 end_vp = end_vps[np.random.randint(len(end_vps))]
 
+        # 计算从起点到终点的最短路径
         gt_path = self.shortest_paths[scan][start_vp][end_vp]
         self.gt_path = gt_path
         cur_heading, cur_elevation = self.get_cur_angle(scan, gt_path, start_heading)
 
+        # 如果路径过长，进行截断
         if len(gt_path) > TRAIN_MAX_STEP:
-            # truncate trajectory
             gt_path = gt_path[:TRAIN_MAX_STEP] + [end_vp]
 
+        # 获取轨迹全景特征
         traj_view_img_fts, traj_obj_img_fts, traj_loc_fts, traj_nav_types, traj_cand_vpids, \
-            last_vp_angles, last_vp_objids, grid_fts, grid_map, gridmap_pos_fts, target_patch_id = self.get_traj_pano_fts(
+            last_vp_angles, last_vp_objids, grid_fts, grid_map, gridmap_pos_fts, target_patch_id, traj_text_feats = self.get_traj_pano_fts(
             scan, gt_path)
 
-        # global: the first token is [stop]
+        # 获取全局地图输入特征
+        # global: 第一个token是[stop]
         gmap_vpids, gmap_step_ids, gmap_visited_masks, gmap_pos_fts, gmap_pair_dists = \
             self.get_gmap_inputs(scan, gt_path, cur_heading, cur_elevation)
 
-        # local: the first token is [stop]
+        # 获取局部视点位置特征
+        # local: 第一个token是[stop]
         vp_pos_fts = self.get_vp_pos_fts(scan, start_vp, end_vp,
                                          traj_cand_vpids[-1], cur_heading, cur_elevation, len(traj_nav_types[-1]))
 
+        # 构建输出字典
         outs = {
-            'instr_id': item['instr_id'],
-            'instr_encoding': item['instr_encoding'][:self.max_txt_len],
+            'instr_id': item['instr_id'],  # 指令ID
+            'instr_encoding': item['instr_encoding'][:self.max_txt_len],  # 指令编码
 
-            'traj_view_img_fts': [x[:, :self.image_feat_size] for x in traj_view_img_fts],
-            'traj_obj_img_fts': [x[:, :self.obj_feat_size] for x in traj_obj_img_fts],
-            'traj_loc_fts': traj_loc_fts,
-            'traj_nav_types': traj_nav_types,
-            'traj_cand_vpids': traj_cand_vpids,
-            'traj_vpids': gt_path,
+            # 轨迹特征
+            'traj_view_img_fts': [x[:, :self.image_feat_size] for x in traj_view_img_fts],  # 视图图像特征
+            'traj_obj_img_fts': [x[:, :self.obj_feat_size] for x in traj_obj_img_fts],  # 物体图像特征
+            'traj_loc_fts': traj_loc_fts,  # 位置特征
+            'traj_nav_types': traj_nav_types,  # 导航类型
+            'traj_cand_vpids': traj_cand_vpids,  # 候选视点ID
+            'traj_vpids': gt_path,  # 路径视点ID序列
 
-            'gmap_vpids': gmap_vpids,
-            'gmap_step_ids': gmap_step_ids,
-            'gmap_visited_masks': gmap_visited_masks,
-            'gmap_pos_fts': gmap_pos_fts,
-            'gmap_pair_dists': gmap_pair_dists,
+            # 图像描述特征
+            'traj_text_feats': traj_text_feats,  # 视图图像描述特征
 
-            'vp_pos_fts': vp_pos_fts,
-            # 'vp_objids': last_vp_objids,
-            'vp_angles': last_vp_angles,
-            'grid_fts': grid_fts,
-            'grid_map': grid_map,
-            'gridmap_pos_fts': gridmap_pos_fts,
-            'target_patch_id': target_patch_id
+            # 全局地图特征
+            'gmap_vpids': gmap_vpids,  # 全局地图视点ID
+            'gmap_step_ids': gmap_step_ids,  # 步数ID
+            'gmap_visited_masks': gmap_visited_masks,  # 访问掩码
+            'gmap_pos_fts': gmap_pos_fts,  # 位置特征
+            'gmap_pair_dists': gmap_pair_dists,  # 视点间距离
+
+            # 视点特征
+            'vp_pos_fts': vp_pos_fts,  # 视点位置特征
+            'vp_angles': last_vp_angles,  # 视点角度
+
+            # 网格地图特征
+            'grid_fts': grid_fts,  # 网格特征
+            'grid_map': grid_map,  # 网格地图
+            'gridmap_pos_fts': gridmap_pos_fts,  # 网格位置特征
+            'target_patch_id': target_patch_id  # 目标网格ID
         }
 
+        # 根据需要添加额外输出
         if return_obj_label:
+            # 添加物体标签
             outs['obj_labels'] = self.get_obj_label(item, last_vp_objids)
 
         if return_act_label:
+            # 添加动作标签
             global_act_label, local_act_label = self.get_act_labels(
                 end_vp, item, gmap_vpids, gmap_visited_masks, traj_cand_vpids
             )
-            outs['global_act_labels'] = global_act_label
-            outs['local_act_labels'] = local_act_label
+            outs['global_act_labels'] = global_act_label  # 全局动作标签
+            outs['local_act_labels'] = local_act_label  # 局部动作标签
 
         if return_img_probs:
-            # TODO: whether adding gmap img probs
-            outs['vp_view_probs'] = softmax(traj_view_img_fts[-1][:, self.image_feat_size:], dim=1)
-            outs['vp_obj_probs'] = softmax(traj_obj_img_fts[-1][:, self.obj_feat_size:], dim=1)
+            # 添加图像概率
+            outs['vp_view_probs'] = softmax(traj_view_img_fts[-1][:, self.image_feat_size:], dim=1)  # 视图概率
+            outs['vp_obj_probs'] = softmax(traj_obj_img_fts[-1][:, self.obj_feat_size:], dim=1)  # 物体概率
 
         return outs
 
     def get_cur_angle(self, scan, path, start_heading):
+        """
+        计算当前位置的视角方向（水平角度和垂直角度）
+        
+        参数:
+            scan (str): 场景ID
+            path (list): 导航路径，包含视点ID序列
+            start_heading (float): 起始水平角度（弧度）
+            
+        返回:
+            tuple: (heading, elevation)
+                - heading (float): 水平角度（弧度），范围[0, 2π]
+                - elevation (float): 垂直角度（弧度），范围[-π/2, π/2]
+                
+        说明:
+            - 如果路径长度小于2，使用起始角度和0垂直角度
+            - 否则，根据前一个视点到当前视点的方向计算角度
+            - 水平角度每30度一个离散值（共12个）
+            - 垂直角度每30度一个离散值（上中下3个）
+        """
         if len(path) < 2:
+            # 路径太短，使用起始角度
             heading = start_heading
             elevation = 0
         else:
-            prev_vp = path[-2]
-            cur_vp = path[-1]
-            viewidx = self.scanvp_cands['%s_%s' % (scan, prev_vp)][cur_vp][0]
-            heading = (viewidx % 12) * math.radians(30)
-            elevation = (viewidx // 12 - 1) * math.radians(30)
+            # 根据前一个视点到当前视点的方向计算角度
+            prev_vp = path[-2]  # 前一个视点
+            cur_vp = path[-1]  # 当前视点
+            viewidx = self.scanvp_cands['%s_%s' % (scan, prev_vp)][cur_vp][0]  # 视角索引
+            heading = (viewidx % 12) * math.radians(30)  # 水平角度，每30度一个
+            elevation = (viewidx // 12 - 1) * math.radians(30)  # 垂直角度，-30/0/30度
         return heading, elevation
+
 
     def get_gridmap_pos_fts(self, half_len):
         rel_angles, rel_dists = [], []
@@ -340,6 +582,7 @@ class ReverieTextPathData(object):
                     [rel_dist / MAX_DIST]
                 )
 
+
         rel_angles = np.array(rel_angles).astype(np.float32)
         rel_dists = np.array(rel_dists).astype(np.float32)
         rel_ang_fts = get_angle_fts(rel_angles[:, 0], rel_angles[:, 1])
@@ -348,6 +591,7 @@ class ReverieTextPathData(object):
         return gridmap_pos_fts
 
     def getGlobalMap(self, scan_id, viewpoint_id):
+
 
         viewpoint_x_list = []
         viewpoint_y_list = []
@@ -420,7 +664,7 @@ class ReverieTextPathData(object):
         else:
             half_len = y_half_len
 
-        half_len = half_len * 2 / 3
+        half_len = half_len * 2 /3
         min_x = position["x"] - half_len
         max_x = position["x"] + half_len
         min_y = position["y"] - half_len
@@ -454,10 +698,10 @@ class ReverieTextPathData(object):
         map_y = ((map_y + half_len) / (2 * half_len) * (GLOBAL_HEIGHT - 1)).astype(np.int32)
 
         map_x[map_x < 0] = 0
-        map_x[map_x >= GLOBAL_WIDTH] = GLOBAL_WIDTH - 1
+        map_x[map_x >= GLOBAL_WIDTH] = GLOBAL_WIDTH -1
 
         map_y[map_y < 0] = 0
-        map_y[map_y >= GLOBAL_HEIGHT] = GLOBAL_HEIGHT - 1
+        map_y[map_y >= GLOBAL_HEIGHT] = GLOBAL_HEIGHT -1
 
         label_index = (global_mask == 1)
 
@@ -490,6 +734,7 @@ class ReverieTextPathData(object):
         self.global_map = None
 
         traj_view_img_fts, traj_obj_img_fts, traj_loc_fts, traj_nav_types, traj_cand_vpids = [], [], [], [], []
+        traj_text_feats = []  # === New ===
         grid_map = None
         grid_fts = np.array([])
         for vp in path:
@@ -507,8 +752,9 @@ class ReverieTextPathData(object):
             grid_map = self.global_map
 
             view_fts, obj_img_fts, obj_attrs = self.get_scanvp_feature(scan, vp)
+            object_embeds = self.ObjectTextDB.get_text_features(scan, vp)
 
-            view_img_fts, view_angles, cand_vpids = [], [], []
+            view_img_fts, view_angles, cand_vpids, view_indices = [], [], [], []  # === track indices ===
             # cand views
             nav_cands = self.scanvp_cands['%s_%s' % (scan, vp)]
             used_viewidxs = set()
@@ -519,9 +765,17 @@ class ReverieTextPathData(object):
                 view_angle = self.all_point_rel_angles[12][v[0]]
                 view_angles.append([view_angle[0] + v[2], view_angle[1] + v[3]])
                 cand_vpids.append(k)
-            # non cand views
-            view_img_fts.extend([view_fts[idx] for idx in range(36) if idx not in used_viewidxs])
-            view_angles.extend([self.all_point_rel_angles[12][idx] for idx in range(36) if idx not in used_viewidxs])
+                view_indices.append(v[0])  # === New ===
+
+            # non-cand views
+            for idx in range(36):
+                if idx not in used_viewidxs:
+                    view_img_fts.append(view_fts[idx])
+                    view_angles.append(self.all_point_rel_angles[12][idx])
+                    view_indices.append(idx)  # === New ===
+            # === 对应 reorder 文本描述向量 ===
+            reordered_text = [object_embeds[idx].cpu().numpy() for idx in view_indices]
+            traj_text_feats.append(np.stack(reordered_text, axis=0))  # (36, 768)
             # combine cand views and noncand views
             view_img_fts = np.stack(view_img_fts, 0)  # (n_views, dim_ft)
             view_angles = np.stack(view_angles, 0)
@@ -557,9 +811,36 @@ class ReverieTextPathData(object):
             last_vp_angles = np.concatenate([view_angles, obj_angles], 0)
 
         return traj_view_img_fts, traj_obj_img_fts, traj_loc_fts, traj_nav_types, traj_cand_vpids, \
-            last_vp_angles, last_vp_objids, grid_fts.reshape((-1, 768)), grid_map, gridmap_pos_fts, target_patch_id
-
+            last_vp_angles, last_vp_objids, grid_fts.reshape(
+            (-1, 768)), grid_map, gridmap_pos_fts, target_patch_id, traj_text_feats
+        
     def get_gmap_inputs(self, scan, path, cur_heading, cur_elevation):
+        """
+        获取全局地图的输入特征
+        
+        参数:
+            scan (str): 场景ID
+            path (list): 视点ID序列，表示导航路径
+            cur_heading (float): 当前水平角度（弧度）
+            cur_elevation (float): 当前垂直角度（弧度）
+            
+        返回:
+            tuple: 包含以下全局地图特征：
+            - gmap_vpids (list): 全局地图中的视点ID列表
+            - gmap_step_ids (list): 步数ID列表，表示每个视点在路径中的位置
+            - gmap_visited_masks (list): 访问掩码列表，表示每个视点是否已访问
+            - gmap_pos_fts (np.ndarray): 位置特征数组，包含相对位置和方向信息
+            - gmap_pair_dists (np.ndarray): 视点对之间的距离矩阵
+            
+        说明:
+            该方法构建全局地图表示，包括：
+            1. 已访问的视点
+            2. 当前视点的邻居视点
+            3. 视点之间的相对位置和距离
+            4. 视点的访问状态
+            
+            全局地图用于帮助模型理解整体环境结构和导航历史。
+        """
         scan_graph = self.graphs[scan]
         cur_vp = path[-1]
 
@@ -605,7 +886,7 @@ class ReverieTextPathData(object):
                 rel_dists.append([0, 0, 0])
             else:
                 rel_heading, rel_elevation, rel_dist = calculate_vp_rel_pos_fts(
-                    self.graphs[scan].nodes[cur_vp]['position'],
+                    self.graphs[scan].nodes[cur_vp]['position'], 
                     self.graphs[scan].nodes[vp]['position'],
                     base_heading=cur_heading, base_elevation=cur_elevation,
                 )
@@ -640,7 +921,7 @@ class R2RTextPathData(ReverieTextPathData):
         super().__init__(
             anno_files, img_ft_file, None, scanvp_cands_file, connectivity_dir,
             image_feat_size=image_feat_size, image_prob_size=image_prob_size,
-            angle_feat_size=angle_feat_size, obj_feat_size=0, obj_prob_size=0,
+            angle_feat_size=angle_feat_size, obj_feat_size=0, obj_prob_size=0, 
             max_objects=0, max_txt_len=max_txt_len, in_memory=in_memory, is_train=is_train,
             act_visited_node=act_visited_node
         )
@@ -691,7 +972,7 @@ class R2RTextPathData(ReverieTextPathData):
         gt_path = item['path']
         self.gt_path = gt_path
         if end_vp is None:
-            if end_vp_type == 'pos':
+            if end_vp_type == 'pos': 
                 # name convention with REVERIE (last vp)
                 end_idx = len(gt_path) - 1
                 end_vp = gt_path[-1]
@@ -712,7 +993,8 @@ class R2RTextPathData(ReverieTextPathData):
             gt_path = gt_path[:TRAIN_MAX_STEP] + [end_vp]
 
         traj_view_img_fts, traj_loc_fts, traj_nav_types, traj_cand_vpids, \
-            last_vp_angles, grid_fts, grid_map, gridmap_pos_fts, target_patch_id = self.get_traj_pano_fts(scan, gt_path)
+            last_vp_angles, grid_fts, grid_map, gridmap_pos_fts, target_patch_id, traj_text_feats = self.get_traj_pano_fts(
+            scan, gt_path)
 
         # global: the first token is [stop]
         gmap_vpids, gmap_step_ids, gmap_visited_masks, gmap_pos_fts, gmap_pair_dists = \
@@ -734,6 +1016,9 @@ class R2RTextPathData(ReverieTextPathData):
             'traj_nav_types': traj_nav_types,  # 导航类型标记(1=候选视角,0=非候选视角)
             'traj_cand_vpids': traj_cand_vpids,  # 每个位置的候选视点ID列表
             'traj_vpids': gt_path,  # 真实的轨迹视点ID序列
+
+            # 图像描述特征
+            'traj_text_feats': traj_text_feats,  # 视图图像描述特征
 
             # 全局地图相关特征
             'gmap_vpids': gmap_vpids,  # 全局地图中的视点ID列表
@@ -784,7 +1069,9 @@ class R2RTextPathData(ReverieTextPathData):
         self.max_y = -10000
         self.min_y = 10000
 
+
         traj_view_img_fts, traj_loc_fts, traj_nav_types, traj_cand_vpids = [], [], [], []
+        traj_text_feats = []  # === New ===
         grid_map = None
         grid_fts = np.array([])
 
@@ -804,8 +1091,9 @@ class R2RTextPathData(ReverieTextPathData):
             grid_map = self.global_map
 
             view_fts = self.get_scanvp_feature(scan, vp)
+            object_embeds = self.ObjectTextDB.get_text_features(scan, vp)  # [36] List[Tensor[768]]
 
-            view_img_fts, view_angles, cand_vpids = [], [], []
+            view_img_fts, view_angles, cand_vpids, view_indices = [], [], [], []  # === track indices ===
             # cand views
             nav_cands = self.scanvp_cands['%s_%s' % (scan, vp)]
             used_viewidxs = set()
@@ -816,9 +1104,19 @@ class R2RTextPathData(ReverieTextPathData):
                 view_angle = self.all_point_rel_angles[12][v[0]]
                 view_angles.append([view_angle[0] + v[2], view_angle[1] + v[3]])
                 cand_vpids.append(k)
-            # non cand views
-            view_img_fts.extend([view_fts[idx] for idx in range(36) if idx not in used_viewidxs])
-            view_angles.extend([self.all_point_rel_angles[12][idx] for idx in range(36) if idx not in used_viewidxs])
+                view_indices.append(v[0])  # === New ===
+
+            # non-cand views
+            for idx in range(36):
+                if idx not in used_viewidxs:
+                    view_img_fts.append(view_fts[idx])
+                    view_angles.append(self.all_point_rel_angles[12][idx])
+                    view_indices.append(idx)  # === New ===
+
+            # === 对应 reorder 文本描述向量 ===
+            reordered_text = [object_embeds[idx].cpu().numpy() for idx in view_indices]
+            traj_text_feats.append(np.stack(reordered_text, axis=0))  # (36, 768)
+
             # combine cand views and noncand views
             view_img_fts = np.stack(view_img_fts, 0)  # (n_views, dim_ft)
             view_angles = np.stack(view_angles, 0)
@@ -834,8 +1132,8 @@ class R2RTextPathData(ReverieTextPathData):
             last_vp_angles = view_angles
 
         return traj_view_img_fts, traj_loc_fts, traj_nav_types, traj_cand_vpids, last_vp_angles, grid_fts.reshape(
-            (-1, 768)), grid_map, gridmap_pos_fts, target_patch_id
-
+            (-1, 768)), grid_map, gridmap_pos_fts, target_patch_id, traj_text_feats
+     
 
 class SoonTextPathData(ReverieTextPathData):
     def __init__(
@@ -907,6 +1205,6 @@ class SoonTextPathData(ReverieTextPathData):
             idx, end_vp_type,
             return_img_probs=return_img_probs,
             return_act_label=return_act_label,
-            return_obj_label=return_obj_label,
+            return_obj_label=return_obj_label, 
             end_vp=end_vp
         )

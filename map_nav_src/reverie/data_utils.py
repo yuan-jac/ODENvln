@@ -20,7 +20,7 @@ class ObjectFeatureDB(object):
             with h5py.File(self.obj_ft_file, 'r') as f:
                 obj_attrs = {}
                 if key in f:
-                    obj_fts = f[key][...][:, :self.obj_feat_size].astype(np.float32)
+                    obj_fts = f[key][...][:, :self.obj_feat_size].astype(np.float32) 
                     for attr_key, attr_value in f[key].attrs.items():
                         obj_attrs[attr_key] = attr_value
                 else:
@@ -73,7 +73,6 @@ def load_instr_datasets(anno_dir, dataset, splits, tokenizer):
         data += new_data
     return data
 
-
 def construct_instrs(anno_dir, dataset, splits, tokenizer, max_instr_len=512):
     data = []
     for i, item in enumerate(load_instr_datasets(anno_dir, dataset, splits, tokenizer)):
@@ -92,7 +91,6 @@ def construct_instrs(anno_dir, dataset, splits, tokenizer, max_instr_len=512):
             del new_item['instr_encodings']
             data.append(new_item)
     return data
-
 
 def load_obj2vps(bbox_file):
     obj2vps = {}

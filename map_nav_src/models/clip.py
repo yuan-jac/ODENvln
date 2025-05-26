@@ -59,7 +59,6 @@ class Transformer(nn.Module):
     def forward(self, x: torch.Tensor):
         return self.resblocks(x)
 
-
 class VisionTransformer(nn.Module):
     def __init__(self, input_resolution: int, patch_size: int, width: int, layers: int, heads: int):
         super().__init__()
@@ -85,7 +84,6 @@ class VisionTransformer(nn.Module):
         x = self.ln_post(x)
         return x
 
-
 class CLIP(nn.Module):
     def __init__(self, input_resolution: int, patch_size: int, width: int, layers: int, heads: int):
         super().__init__()
@@ -94,3 +92,4 @@ class CLIP(nn.Module):
 
     def forward(self, x: torch.Tensor):
         return self.visual(x)
+

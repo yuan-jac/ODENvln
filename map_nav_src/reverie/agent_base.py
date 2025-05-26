@@ -80,7 +80,6 @@ class BaseAgent(object):
                 if looped:
                     break
 
-
 class Seq2SeqAgent(BaseAgent):
     env_actions = {
         'left': (0, -1, 0),  # left
@@ -174,7 +173,7 @@ class Seq2SeqAgent(BaseAgent):
                 self.rollout(
                     train_ml=1., train_rl=False, **kwargs
                 )
-            elif self.args.train_alg == 'dagger':
+            elif self.args.train_alg == 'dagger': 
                 if self.args.ml_weight != 0:
                     self.feedback = 'teacher'
                     self.rollout(
@@ -207,14 +206,12 @@ class Seq2SeqAgent(BaseAgent):
         the_dir, _ = os.path.split(path)
         os.makedirs(the_dir, exist_ok=True)
         states = {}
-
         def create_state(name, model, optimizer):
             states[name] = {
                 'epoch': epoch + 1,
                 'state_dict': model.state_dict(),
                 'optimizer': optimizer.state_dict(),
             }
-
         all_tuple = [("vln_bert", self.vln_bert, self.vln_bert_optimizer),
                      ("critic", self.critic, self.critic_optimizer)]
         for param in all_tuple:
@@ -249,7 +246,6 @@ class Seq2SeqAgent(BaseAgent):
             model.load_state_dict(state)
             if self.args.resume_optimizer:
                 optimizer.load_state_dict(states[name]['optimizer'])
-
         all_tuple = [("vln_bert", self.vln_bert, self.vln_bert_optimizer),
                      ("critic", self.critic, self.critic_optimizer)]
         for param in all_tuple:

@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 
-
 def pad_tensors(tensors, lens=None, pad=0):
     """B x [T, ...]"""
     if lens is None:
@@ -19,7 +18,6 @@ def pad_tensors(tensors, lens=None, pad=0):
     for i, (t, l) in enumerate(zip(tensors, lens)):
         output.data[i, :l, ...] = t.data
     return output
-
 
 def gen_seq_masks(seq_lens, max_len=None):
     if max_len is None:

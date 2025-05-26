@@ -25,7 +25,6 @@ def cal_dtw(shortest_distances, prediction, reference, success=None, threshold=3
         'SDTW': sdtw
     }
 
-
 def cal_cls(shortest_distances, prediction, reference, threshold=3.0):
     def length(nodes):
         return np.sum([

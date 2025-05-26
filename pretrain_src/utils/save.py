@@ -44,3 +44,4 @@ class ModelSaver(object):
             if hasattr(optimizer, '_amp_stash'):
                 pass  # TODO fp16 optimizer
             torch.save(dump, f'{self.output_dir}/train_state_{step}.pt')
+

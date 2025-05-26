@@ -15,7 +15,7 @@ seed=0
 
 name=Grid_Map-${train_alg}-${features}
 name=${name}-seed.${seed}
-name=${name}-init.aug.45k-new_dino+siglip+nomrc
+name=${name}-init.aug.45k-new_dino+siglip+mrc
 
 outdir=${DATA_ROOT}/R2R/exprs_map/finetune/${name}
 
@@ -59,9 +59,9 @@ flag="--root_dir ${DATA_ROOT}
 
 #train
 
-CUDA_VISIBLE_DEVICES=0,3 python3 -m torch.distributed.launch --node_rank 0 --nnodes=1  --master_port 29502 --nproc_per_node=${ngpus}  map_nav_src/main_nav.py $flag \
+CUDA_VISIBLE_DEVICES=5,7 python3 -m torch.distributed.launch --node_rank 0 --nnodes=1  --master_port 29510 --nproc_per_node=${ngpus}  map_nav_src/main_nav.py $flag \
   --tokenizer bert \
-	--bert_ckpt_file datasets/R2R/exprs_map/pretrain/cmt-vitbase-mlm.mrc.sap-init.lxmert-aug.speaker-new2/ckpts/model_step_75000.pt \
+	--bert_ckpt_file datasets/R2R/exprs_map/pretrain/cmt-vitbase-mlm.mrc.sap-init.lxmert-aug.speaker-mrcplus/ckpts/model_step_75000.pt \
   --eval_first
   #--resume_file  ../datasets/R2R/exprs_map/finetune/Grid_Map-dagger-vitbase-seed.0-init.aug.45k-new/ckpts/best_3 \
 # test
