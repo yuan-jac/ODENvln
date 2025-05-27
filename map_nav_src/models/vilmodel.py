@@ -21,7 +21,6 @@ clip_config = edict({
     'transformer_dropout_rate': 0.
 })
 
-
 logger = logging.getLogger(__name__)
 
 try:
@@ -47,10 +46,10 @@ def swish(x):
 ACT2FN = {"gelu": gelu, "relu": torch.nn.functional.relu, "swish": swish}
 
 
-
 class BertEmbeddings(nn.Module):
     """Construct the embeddings from word, position and token_type embeddings.
     """
+
     def __init__(self, config):
         super(BertEmbeddings, self).__init__()
         self.word_embeddings = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=0)
@@ -80,6 +79,7 @@ class BertEmbeddings(nn.Module):
         embeddings = self.LayerNorm(embeddings)
         embeddings = self.dropout(embeddings)
         return embeddings
+
 
 class BertSelfAttention(nn.Module):
     def __init__(self, config):
@@ -145,6 +145,7 @@ class BertSelfAttention(nn.Module):
         outputs = (context_layer, attention_scores) if self.output_attentions else (context_layer,)
         return outputs
 
+
 class BertSelfOutput(nn.Module):
     def __init__(self, config):
         super(BertSelfOutput, self).__init__()
@@ -158,6 +159,7 @@ class BertSelfOutput(nn.Module):
         hidden_states = self.LayerNorm(hidden_states + input_tensor)
         return hidden_states
 
+
 class BertAttention(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -169,6 +171,7 @@ class BertAttention(nn.Module):
         attention_output = self.output(self_outputs[0], input_tensor)
         outputs = (attention_output,) + self_outputs[1:]  # add attentions if we output them
         return outputs
+
 
 class BertIntermediate(nn.Module):
     def __init__(self, config):
@@ -184,6 +187,7 @@ class BertIntermediate(nn.Module):
         hidden_states = self.intermediate_act_fn(hidden_states)
         return hidden_states
 
+
 class BertOutput(nn.Module):
     def __init__(self, config):
         super(BertOutput, self).__init__()
@@ -196,6 +200,7 @@ class BertOutput(nn.Module):
         hidden_states = self.dropout(hidden_states)
         hidden_states = self.LayerNorm(hidden_states + input_tensor)
         return hidden_states
+
 
 class BertLayer(nn.Module):
     def __init__(self, config):
@@ -211,6 +216,7 @@ class BertLayer(nn.Module):
         layer_output = self.output(intermediate_output, attention_output)
         outputs = (layer_output,) + attention_outputs[1:]  # add attentions if we output them
         return outputs
+
 
 class BertEncoder(nn.Module):
     def __init__(self, config):
@@ -246,6 +252,7 @@ class BertEncoder(nn.Module):
             outputs = outputs + (all_attentions,)
         return outputs  # last-layer hidden state, (all hidden states), (all attentions)
 
+
 class BertPooler(nn.Module):
     def __init__(self, config):
         super(BertPooler, self).__init__()
@@ -259,6 +266,7 @@ class BertPooler(nn.Module):
         pooled_output = self.dense(first_token_tensor)
         pooled_output = self.activation(pooled_output)
         return pooled_output
+
 
 class BertPredictionHeadTransform(nn.Module):
     def __init__(self, config):
@@ -275,6 +283,7 @@ class BertPredictionHeadTransform(nn.Module):
         hidden_states = self.transform_act_fn(hidden_states)
         hidden_states = self.LayerNorm(hidden_states)
         return hidden_states
+
 
 class BertLMPredictionHead(nn.Module):
     def __init__(self, config):
@@ -294,6 +303,7 @@ class BertLMPredictionHead(nn.Module):
         hidden_states = self.decoder(hidden_states) + self.bias
         return hidden_states
 
+
 class BertOnlyMLMHead(nn.Module):
     def __init__(self, config):
         super(BertOnlyMLMHead, self).__init__()
@@ -302,6 +312,7 @@ class BertOnlyMLMHead(nn.Module):
     def forward(self, sequence_output):
         prediction_scores = self.predictions(sequence_output)
         return prediction_scores
+
 
 class BertOutAttention(nn.Module):
     def __init__(self, config, ctx_dim=None):
@@ -356,6 +367,7 @@ class BertOutAttention(nn.Module):
         context_layer = context_layer.view(*new_context_layer_shape)
         return context_layer, attention_scores
 
+
 class BertXAttention(nn.Module):
     def __init__(self, config, ctx_dim=None):
         super().__init__()
@@ -366,6 +378,7 @@ class BertXAttention(nn.Module):
         output, attention_scores = self.att(input_tensor, ctx_tensor, ctx_att_mask)
         attention_output = self.output(output, input_tensor)
         return attention_output, attention_scores
+
 
 class GraphLXRTXLayer(nn.Module):
     def __init__(self, config):
@@ -388,7 +401,7 @@ class GraphLXRTXLayer(nn.Module):
     def forward(
             self, lang_feats, lang_attention_mask, visn_feats, visn_attention_mask,
             graph_sprels=None
-    ):      
+    ):
         visn_att_output = self.visual_attention(
             visn_feats, lang_feats, ctx_att_mask=lang_attention_mask
         )[0]
@@ -414,6 +427,7 @@ class GraphLXRTXLayer(nn.Module):
         lang_inter_output = self.lang_inter(lang_att_output)
         lang_output = self.lang_output(lang_inter_output, lang_att_output)
         return lang_output
+
 
 class LanguageEncoder(nn.Module):
     def __init__(self, config):
@@ -451,18 +465,68 @@ class CrossmodalEncoder(nn.Module):
         extended_img_masks = extend_neg_masks(img_masks)  # (N, 1(H), 1(L_q), L_v)
         for layer_module in self.x_layers:
             img_embeds = layer_module(
-                txt_embeds, extended_txt_masks, 
+                txt_embeds, extended_txt_masks,
                 img_embeds, extended_img_masks,
                 graph_sprels=graph_sprels
             )
         return img_embeds
 
+
+class GatedCrossAttentionFusion(nn.Module):
+    """
+    使用门控交叉注意力机制融合图像和文本特征
+    """
+
+    def __init__(self, dim=768, num_heads=8):
+        super().__init__()
+        self.cross_attn = nn.MultiheadAttention(embed_dim=dim, num_heads=num_heads, batch_first=True)
+
+        # 可学习门控: 输入[attn_output ; image_feats] → 输出[gate]
+        self.gate_mlp = nn.Sequential(
+            nn.Linear(dim * 2, dim),
+            nn.ReLU(),
+            nn.Linear(dim, dim),
+            nn.Sigmoid()  # gate ∈ [0,1]
+        )
+
+        self.norm = nn.LayerNorm(dim)
+
+    def forward(self, image_feats, text_feats):
+        """
+        image_feats: [B, L, D] ← Value (图像特征)
+        text_feats:  [B, L, D] ← Query (文本特征)
+
+        Return:
+        fused_feats: [B, L, D] ← 文本引导下的图像特征（含残差门控）
+        """
+        # 交叉注意力
+        attn_output, attn_weights = self.cross_attn(
+            query=text_feats, key=image_feats, value=image_feats
+        )  # [B, L, D]
+
+        # 门控: [attn_output ; image_feats] → gate
+        gate_input = torch.cat([attn_output, image_feats], dim=-1)  # [B, L, 2D]
+        gate = self.gate_mlp(gate_input)  # [B, L, D], 每个位置每个维度一个门控值
+
+        # 门控残差融合
+        fused = gate * attn_output + (1 - gate) * image_feats
+        return self.norm(fused)
+
+
 class ImageEmbeddings(nn.Module):
     def __init__(self, config):
         super().__init__()
+        # 文本特征处理
+        self.text_linear = nn.Linear(config.hidden_size, config.hidden_size)
+        self.text_layer_norm = BertLayerNorm(config.hidden_size, eps=1e-12)
 
         self.img_linear = nn.Linear(config.image_feat_size, config.hidden_size)
         self.img_layer_norm = BertLayerNorm(config.hidden_size, eps=1e-12)
+        # 图像-文本融合模块
+        self.fusion_module = GatedCrossAttentionFusion(
+            dim=config.hidden_size,
+            num_heads=config.num_attention_heads
+        )
         self.loc_linear = nn.Linear(config.angle_feat_size + 3, config.hidden_size)
         self.loc_layer_norm = BertLayerNorm(config.hidden_size, eps=1e-12)
 
@@ -487,13 +551,22 @@ class ImageEmbeddings(nn.Module):
             self.pano_encoder = None
 
     def forward(
-            self, traj_view_img_fts, traj_obj_img_fts, traj_loc_fts, traj_nav_types,
+            self, traj_view_img_fts, traj_text_feats, traj_obj_img_fts, traj_loc_fts, traj_nav_types,
             traj_step_lens, traj_vp_view_lens, traj_vp_obj_lens, type_embed_layer
     ):
         device = traj_view_img_fts.device
         has_obj = traj_obj_img_fts is not None
+        has_text = traj_text_feats is not None
 
         traj_view_img_embeds = self.img_layer_norm(self.img_linear(traj_view_img_fts))
+        # 如果有文本特征，进行融合
+        if has_text:
+            # 处理文本特征
+            traj_text_embeds = self.text_layer_norm(self.text_linear(traj_text_feats))
+
+            # 使用门控交叉注意力融合视觉和文本特征
+            traj_view_img_embeds = self.fusion_module(traj_view_img_embeds, traj_text_embeds)
+
         if has_obj:
             if self.obj_linear is None:
                 traj_obj_img_embeds = self.img_layer_norm(self.img_linear(traj_obj_img_fts))
@@ -565,6 +638,7 @@ class LocalVPEncoder(nn.Module):
         vp_embeds = self.encoder(txt_embeds, txt_masks, vp_embeds, vp_masks)
         return vp_embeds
 
+
 class GlobalMapEncoder(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -610,7 +684,7 @@ class GlobalMapEncoder(nn.Module):
         batch_gmap_img_fts = pad_tensors_wgrad(batch_gmap_img_fts)
         # add a [stop] token at beginning
         batch_gmap_img_fts = torch.cat(
-            [torch.zeros(batch_size, 1, batch_gmap_img_fts.size(2)).to(device), batch_gmap_img_fts], 
+            [torch.zeros(batch_size, 1, batch_gmap_img_fts.size(2)).to(device), batch_gmap_img_fts],
             dim=1
         )
         return batch_gmap_img_fts
@@ -662,6 +736,7 @@ class ClsPrediction(nn.Module):
 
     def forward(self, x):
         return self.net(x)
+
 
 class GlocalTextPathNavCMT(BertPreTrainedModel):
     def __init__(self, config):
@@ -730,14 +805,22 @@ class GlocalTextPathNavCMT(BertPreTrainedModel):
         return txt_embeds
 
     def forward_panorama_per_step(
-            self, view_img_fts, obj_img_fts, loc_fts, nav_types, view_lens, obj_lens
+            self, view_img_fts, view_img_text_fts, obj_img_fts, loc_fts, nav_types, view_lens, obj_lens
     ):
         device = view_img_fts.device
         has_obj = obj_img_fts is not None
+        has_text = view_img_text_fts is not None
 
         view_img_embeds = self.img_embeddings.img_layer_norm(
             self.img_embeddings.img_linear(view_img_fts)
         )
+        if has_text:
+            # 处理文本特征
+            view_text_embeds = self.img_embeddings.text_layer_norm(self.img_embeddings.text_linear(view_img_text_fts))
+
+            # 使用门控交叉注意力融合视觉和文本特征
+            view_img_embeds = self.img_embeddings.fusion_module(view_img_embeds, view_text_embeds)
+
         if has_obj:
             if self.img_embeddings.obj_linear is None:
                 obj_img_embeds = self.img_embeddings.img_layer_norm(
@@ -784,6 +867,7 @@ class GlocalTextPathNavCMT(BertPreTrainedModel):
 
         batch_size = len(grid_fts)
         grid_map_input = torch.zeros(batch_size, 16 * 16, 768).to(grid_fts[0].device)
+
         text_fts = self.text_proj(txt_embeds).permute(0, 2, 1)
         grid_masks = [[] for b in range(batch_size)]
         max_cell_num = 0
@@ -800,7 +884,7 @@ class GlocalTextPathNavCMT(BertPreTrainedModel):
                 else:
                     grid_masks[b].append(1)
                 grid_map_input[b, i] = (
-                        cell_fts * torch.softmax(grid_fts_weight[grid_map[b] == i], dim=-1).unsqueeze(-1)).sum(-2)
+                            cell_fts * torch.softmax(grid_fts_weight[grid_map[b] == i], dim=-1).unsqueeze(-1)).sum(-2)
 
             if max_cell_num < sum(grid_masks[b]):
                 max_cell_num = sum(grid_masks[b])
@@ -914,18 +998,20 @@ class GlocalTextPathNavCMT(BertPreTrainedModel):
 
         elif mode == 'panorama':
             pano_embeds, pano_masks = self.forward_panorama_per_step(
-                batch['view_img_fts'], None, batch['loc_fts'],
+                batch['view_img_fts'], batch['view_text_fts'], None, batch['loc_fts'],
                 batch['nav_types'], batch['view_lens'], None
             )
             return pano_embeds, pano_masks
 
         elif mode == 'navigation':
             return self.forward_navigation_per_step(
-                batch['txt_embeds'], batch['txt_masks'], batch['gmap_img_embeds'], 
+                batch['txt_embeds'], batch['txt_masks'], batch['gmap_img_embeds'],
                 batch['gmap_step_ids'], batch['gmap_pos_fts'], batch['gmap_masks'],
-                batch['gmap_pair_dists'], batch['gmap_visited_masks'], batch['gmap_vpids'], 
+                batch['gmap_pair_dists'], batch['gmap_visited_masks'], batch['gmap_vpids'],
                 batch['vp_img_embeds'], batch['vp_pos_fts'], batch['vp_masks'],
                 batch['vp_nav_masks'], batch['vp_obj_masks'], batch['vp_cand_vpids'], batch['grid_fts'],
                 batch['grid_map'], batch['gridmap_pos_fts']
             )
         return None
+
+

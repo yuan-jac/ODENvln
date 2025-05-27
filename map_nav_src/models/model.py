@@ -13,6 +13,20 @@ class VLNBert(nn.Module):
 
         self.vln_bert = get_vlnbert_models(args, config=None)  # initialize the VLN-BERT
         self.drop_env = nn.Dropout(p=args.feat_dropout)
+        self.drop_prob = args.feat_dropout
+
+    def shared_dropout(self, feat_img, feat_text):
+        if not self.training or self.drop_prob == 0.:
+            return feat_img, feat_text
+
+        # 生成同一掩码
+        mask = feat_img.new_empty(feat_img.shape).bernoulli_(1 - self.drop_prob)
+        mask = mask / (1 - self.drop_prob)
+
+        feat_img = feat_img * mask
+        feat_text = feat_text * mask
+
+        return feat_img, feat_text
 
     def forward(self, mode, batch):
 
@@ -23,7 +37,8 @@ class VLNBert(nn.Module):
             return txt_embeds
 
         elif mode == 'panorama':
-            batch['view_img_fts'] = self.drop_env(batch['view_img_fts'])
+            batch['view_img_fts'], batch['view_text_fts'] = self.shared_dropout(
+                batch['view_img_fts'], batch['view_text_fts'])
             if 'obj_img_fts' in batch:
                 batch['obj_img_fts'] = self.drop_env(batch['obj_img_fts'])
             pano_embeds, pano_masks = self.vln_bert(mode, batch)
@@ -34,7 +49,7 @@ class VLNBert(nn.Module):
             return outs
 
         else:
-            raise NotImplementedError('wrong mode: %s' % mode)
+            raise NotImplementedError('wrong mode: %s'%mode)
 
 
 class Critic(nn.Module):

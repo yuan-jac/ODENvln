@@ -53,12 +53,12 @@ class GMapNavAgent(Seq2SeqAgent):
         :return: 包含全景特征的字典。
         """
         # 初始化用于存储批次数据的列表
-        batch_view_img_fts, batch_loc_fts, batch_nav_types = [], [], []  # 图像特征、位置特征和导航类型
+        batch_view_img_fts,batch_view_text_fts, batch_loc_fts, batch_nav_types =[], [], [], []  # 图像特征、图像描述特征，位置特征和导航类型
         batch_view_lens, batch_cand_vpids = [], []  # 视图长度和候选视图 ID 列表
 
         # 遍历每个观测数据
         for i, ob in enumerate(obs):
-            view_img_fts, view_ang_fts, nav_types, cand_vpids = [], [], [], []  # 初始化当前样本的特征列表
+            view_text_fts,view_img_fts, view_ang_fts, nav_types, cand_vpids = [],[], [], [], []  # 初始化当前样本的特征列表
             used_viewidxs = set()  # 用于记录已使用的视图索引
 
             # 提取候选视图特征
@@ -67,6 +67,8 @@ class GMapNavAgent(Seq2SeqAgent):
                 view_img_fts.append(cc['feature'][:self.args.image_feat_size])
                 # 提取角度特征（剩余部分）
                 view_ang_fts.append(cc['feature'][self.args.image_feat_size:])
+                # 提取图像描述特征
+                view_text_fts.append(cc['objecttext_feat'])
                 # 标记为候选视图（导航类型为 1）
                 nav_types.append(1)
                 # 记录候选视图的 ID
@@ -80,12 +82,16 @@ class GMapNavAgent(Seq2SeqAgent):
                 [x[:self.args.image_feat_size] for k, x in enumerate(ob['feature']) if k not in used_viewidxs])
             view_ang_fts.extend(
                 [x[self.args.image_feat_size:] for k, x in enumerate(ob['feature']) if k not in used_viewidxs])
+            view_text_fts.extend(
+                [x for k, x in enumerate(ob['objecttext_feat']) if k not in used_viewidxs]
+            )
             # 补齐导航类型为 0（表示非候选视图）
             nav_types.extend([0] * (36 - len(used_viewidxs)))
 
             # 合并候选视图和非候选视图的特征
             view_img_fts = np.stack(view_img_fts, 0)  # 将图像特征堆叠成一个 NumPy 数组 (n_views, dim_ft)
             view_ang_fts = np.stack(view_ang_fts, 0)  # 将角度特征堆叠成一个 NumPy 数组
+            view_text_fts = np.stack(view_text_fts, 0)  # 将图像描述特征堆叠成一个 NumPy 数组
             # 创建一个简单的框特征（固定值 [1, 1, 1]，表示每个视图的边界框）
             view_box_fts = np.array([[1, 1, 1]] * len(view_img_fts)).astype(np.float32)
             # 将角度特征和框特征拼接成位置特征
@@ -93,6 +99,7 @@ class GMapNavAgent(Seq2SeqAgent):
 
             # 将当前样本的特征添加到批次列表
             batch_view_img_fts.append(torch.from_numpy(view_img_fts))  # 转换为 PyTorch 张量
+            batch_view_text_fts.append(torch.from_numpy(view_text_fts))  # 转换为 PyTorch 张量
             batch_loc_fts.append(torch.from_numpy(view_loc_fts))  # 转换为 PyTorch 张量
             batch_nav_types.append(torch.LongTensor(nav_types))  # 转换为 PyTorch 张量
             batch_cand_vpids.append(cand_vpids)  # 添加候选视图 ID 列表
@@ -100,6 +107,7 @@ class GMapNavAgent(Seq2SeqAgent):
 
         # 对批次数据进行填充，以对齐长度
         batch_view_img_fts = pad_tensors(batch_view_img_fts).cuda()  # 填充图像特征并移至 GPU
+        batch_view_text_fts = pad_tensors(batch_view_text_fts).cuda()  # 填充图像描述特征并移至 GPU
         batch_loc_fts = pad_tensors(batch_loc_fts).cuda()  # 填充位置特征并移至 GPU
         batch_nav_types = pad_sequence(batch_nav_types, batch_first=True, padding_value=0).cuda()  # 填充导航类型并移至 GPU
         batch_view_lens = torch.LongTensor(batch_view_lens).cuda()  # 转换为 PyTorch 张量并移至 GPU
@@ -107,6 +115,7 @@ class GMapNavAgent(Seq2SeqAgent):
         # 返回包含全景特征的字典
         return {
             'view_img_fts': batch_view_img_fts,  # 图像特征
+            'view_text_fts': batch_view_text_fts,  # 图像描述特征
             'loc_fts': batch_loc_fts,  # 位置特征
             'nav_types': batch_nav_types,  # 导航类型
             'view_lens': batch_view_lens,  # 视图长度

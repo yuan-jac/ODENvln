@@ -22,14 +22,14 @@ def load_viewpoint_ids(connectivity_dir):
     with open(os.path.join(connectivity_dir, 'scans.txt')) as f:
         scans = [x.strip() for x in f]
     for scan in scans:
-        with open(os.path.join(connectivity_dir, '%s_connectivity.json' % scan)) as f:
+        with open(os.path.join(connectivity_dir, '%s_connectivity.json'%scan)) as f:
             data = json.load(f)
             viewpoint_ids.extend([(scan, x['image_id']) for x in data if x['included']])
     print('Loaded %d viewpoints' % len(viewpoint_ids))
     return viewpoint_ids
 
 TSV_FIELDNAMES = ['scanId', 'viewpointId', 'image_w', 'image_h', 'vfov', 'features']
-VIEWPOINT_SIZE = 36  # Number of discretized views from one viewpoint
+VIEWPOINT_SIZE = 36 # Number of discretized views from one viewpoint
 
 WIDTH = 128
 HEIGHT = 128
@@ -38,8 +38,8 @@ GLOBAL_WIDTH = 16
 GLOBAL_HEIGHT = 16
 
 ERROR_MARGIN = 3.0
-MAX_DIST = 30  # normalize
-MAX_STEP = 10  # normalize
+MAX_DIST = 30   # normalize
+MAX_STEP = 10   # normalize
 TRAIN_MAX_STEP = 20
 
 
@@ -56,16 +56,16 @@ def calculate_vp_rel_pos_fts(a, b, base_heading=0, base_elevation=0):
     dx = b[0] - a[0]
     dy = b[1] - a[1]
     dz = b[2] - a[2]
-    xy_dist = max(np.sqrt(dx ** 2 + dy ** 2), 1e-8)
-    xyz_dist = max(np.sqrt(dx ** 2 + dy ** 2 + dz ** 2), 1e-8)
+    xy_dist = max(np.sqrt(dx**2 + dy**2), 1e-8)
+    xyz_dist = max(np.sqrt(dx**2 + dy**2 + dz**2), 1e-8)
 
     # the simulator's api is weired (x-y axis is transposed)
-    heading = np.arcsin(dx / xy_dist)  # [-pi/2, pi/2]
+    heading = np.arcsin(dx/xy_dist) # [-pi/2, pi/2]
     if b[1] < a[1]:
         heading = np.pi - heading
     heading -= base_heading
 
-    elevation = np.arcsin(dz / xyz_dist)  # [-pi/2, pi/2]
+    elevation = np.arcsin(dz/xyz_dist)  # [-pi/2, pi/2]
     elevation -= base_elevation
 
     return heading, elevation, xyz_dist
@@ -73,7 +73,7 @@ def calculate_vp_rel_pos_fts(a, b, base_heading=0, base_elevation=0):
 
 class DepthFeaturesDB(object):
     def __init__(self, img_ft_file):
-        self.image_feat_size = WIDTH * HEIGHT
+        self.image_feat_size = WIDTH*HEIGHT
         self.img_ft_file = img_ft_file
         self._feature_store = {}
 
@@ -91,7 +91,7 @@ class DepthFeaturesDB(object):
 
 class SemanticFeaturesDB(object):
     def __init__(self, img_ft_file):
-        self.image_feat_size = 8 * 8
+        self.image_feat_size = 8*8
         self.img_ft_file = img_ft_file
         self._feature_store = {}
 
@@ -106,6 +106,61 @@ class SemanticFeaturesDB(object):
                 self._feature_store[key] = ft
         return ft
 
+
+class SingleTextDescriptionDB(object):
+    """
+    文本描述特征数据库类，用于加载和管理场景中各视点的文本描述嵌入向量。
+
+    该类支持两种类型的文本描述：
+    1. object: 描述视点中可见物体的文本嵌入
+    2. spatial: 描述视点中空间关系的文本嵌入
+
+    每个视点包含36个视角(view)，每个视角对应一个文本描述嵌入向量。
+    """
+
+    def __init__(self, pt_file, mode='object'):
+        """
+        初始化文本描述数据库
+
+        参数:
+            pt_file (str): 包含预训练文本嵌入的PyTorch文件路径
+            mode (str): 文本描述类型，可选值为'object'或'spatial'
+        """
+        assert mode in ['object', 'spatial']
+        self.mode = mode
+        # 默认为每个视点的36个视角创建零向量(维度768)
+        self.text_data = defaultdict(lambda: [torch.zeros(768)] * 36)
+
+        if not os.path.exists(pt_file):
+            print(f"[Warning] TextDescriptionDB: file not found at {pt_file}")
+            return
+
+        # 加载预训练的文本嵌入
+        loaded = torch.load(pt_file)
+        embeddings = loaded[f'{mode}_embeddings']  # 例如 object_embeddings
+        meta_infos = loaded['meta_infos']
+
+        # 将嵌入向量映射到对应的场景-视点-视角
+        for info, emb in zip(meta_infos, embeddings):
+            key = f"{info['scan_id']}_{info['viewpoint_id']}"
+            idx = info['view_index']
+            if self.text_data[key][idx] is None:
+                self.text_data[key][idx] = emb
+
+    def get_text_features(self, scan, viewpoint):
+        """
+        获取指定场景和视点的所有视角文本特征
+
+        参数:
+            scan (str): 场景ID
+            viewpoint (str): 视点ID
+
+        返回:
+            List[torch.Tensor]: 包含36个文本嵌入向量的列表，每个向量维度为768
+                               对应视点的36个不同视角的文本描述
+        """
+        key = f"{scan}_{viewpoint}"
+        return self.text_data[key]  # List[Tensor[768]] (长度36)
 
 def get_rel_position(depth_map, angle):
     """
@@ -142,8 +197,7 @@ class EnvBatch(object):
     ''' A simple wrapper for a batch of MatterSim environments,
         using discretized viewpoints and pretrained features '''
 
-    def __init__(self, connectivity_dir, scan_data_dir=None, feat_db=None, semantic_map_dir="datasets/R2R/features",
-                 batch_size=100):
+    def __init__(self, connectivity_dir, scan_data_dir=None, feat_db=None, semantic_map_dir="datasets/R2R/features", batch_size=100):
         """
         1. Load pretrained image feature
         2. Init the Simulator.
@@ -173,7 +227,7 @@ class EnvBatch(object):
                 sim.setDatasetPath(scan_data_dir)
             sim.setNavGraphPath(connectivity_dir)
             sim.setRenderingEnabled(False)
-            sim.setDiscretizedViewingAngles(True)  # Set increment/decrement to 30 degree. (otherwise by radians)
+            sim.setDiscretizedViewingAngles(True)   # Set increment/decrement to 30 degree. (otherwise by radians)
             sim.setCameraResolution(self.image_w, self.image_h)
             sim.setPreloadingEnabled(True)
             sim.setCameraVFOV(math.radians(self.vfov))
@@ -181,10 +235,21 @@ class EnvBatch(object):
             sim.initialize()
             self.sims.append(sim)
 
-        self.DepthDB = DepthFeaturesDB(os.path.join(semantic_map_dir, "depth.hdf5"))
-        self.SemanticDB = SemanticFeaturesDB(os.path.join(semantic_map_dir, "siglip2_p32_256.hdf5"))
-        self.viewpoint_info = json.load(open(os.path.join(semantic_map_dir, "viewpoint_info.json")))
+        self.DepthDB = DepthFeaturesDB(os.path.join(semantic_map_dir,"depth.hdf5"))
+        self.SemanticDB = SemanticFeaturesDB(os.path.join(semantic_map_dir,"siglip2_p32_256.hdf5"))
+        self.ObjectTextDB = SingleTextDescriptionDB(
+            '/data/GridMM/datasets/R2R/features/object_embeddings-base.pt',
+            mode='object'
+        )
+        self.SpatialTextDB = SingleTextDescriptionDB(
+            '/data/GridMM/datasets/R2R/features/spatial_embeddings-base.pt',
+            mode='spatial'
+        )
+        self.viewpoint_info = json.load(open(os.path.join(semantic_map_dir,"viewpoint_info.json")))
         self.feature_states = [None for i in range(len(self.sims))]
+
+
+
 
     def _make_id(self, scanId, viewpointId):
         return scanId + '_' + viewpointId
@@ -207,7 +272,8 @@ class EnvBatch(object):
         self.global_map = [[] for i in range(self.batch_size)]
         self.feature_states = [None for i in range(len(self.sims))]
 
-    def get_global_target(self, obs, next_gt_vp):
+
+    def get_global_target(self,obs,next_gt_vp):
 
         target_patch_ids = []
         for i in range(len(next_gt_vp)):
@@ -225,22 +291,16 @@ class EnvBatch(object):
             target_position_x = self.viewpoint_info['%s_%s' % (scan, next_vp)]["x"] - position["x"]
             target_position_y = self.viewpoint_info['%s_%s' % (scan, next_vp)]["y"] - position["y"]
 
-            if position["x"] - self.min_x[i] > self.max_x[i] - position["x"]:
-                x_half_len = position["x"] - self.min_x[i]
-            else:
-                x_half_len = self.max_x[i] - position["x"]
+            if position["x"]-self.min_x[i] > self.max_x[i]-position["x"] : x_half_len = position["x"]-self.min_x[i]
+            else: x_half_len = self.max_x[i]-position["x"]
 
-            if position["y"] - self.min_y[i] > self.max_y[i] - position["y"]:
-                y_half_len = position["y"] - self.min_y[i]
-            else:
-                y_half_len = self.max_y[i] - position["y"]
+            if position["y"]-self.min_y[i] > self.max_y[i]-position["y"] : y_half_len = position["y"]-self.min_y[i]
+            else: y_half_len = self.max_y[i]-position["y"]
 
-            if x_half_len > y_half_len:
-                half_len = x_half_len
-            else:
-                half_len = y_half_len
+            if x_half_len > y_half_len : half_len = x_half_len
+            else: half_len = y_half_len
 
-            half_len = half_len * 2 / 3
+            half_len = half_len * 2/3
             min_x = position["x"] - half_len
             max_x = position["x"] + half_len
             min_y = position["y"] - half_len
@@ -250,28 +310,27 @@ class EnvBatch(object):
             sRotatex = target_position_x * math.cos(angle) + target_position_y * math.sin(angle)
             sRotatey = target_position_y * math.cos(angle) - target_position_x * math.sin(angle)
 
-            target_patch_x = int((sRotatex + half_len) * 16 // (2 * half_len))
-            target_patch_y = int((sRotatey + half_len) * 16 // (2 * half_len))
-            target_patch_x = min(max(target_patch_x, 0), 15)
-            target_patch_y = min(max(target_patch_y, 0), 15)
-            target_patch_id = 1 + target_patch_x * 16 + target_patch_y
+            target_patch_x = int((sRotatex + half_len)*16 // (2*half_len))
+            target_patch_y = int((sRotatey + half_len)*16 // (2*half_len))
+            target_patch_x = min(max(target_patch_x,0),15)
+            target_patch_y = min(max(target_patch_y,0),15)
+            target_patch_id = 1 + target_patch_x*16 + target_patch_y
             target_patch_ids.append(target_patch_id)
 
         return target_patch_ids
 
     def get_gridmap_pos_fts(self, half_len):
         rel_angles, rel_dists = [], []
-        center_position = [0., 0., 0.]
+        center_position = [0.,0.,0.]
 
-        cell_len = half_len * 2 / GLOBAL_WIDTH
+        cell_len = half_len*2 / GLOBAL_WIDTH
         for i in range(GLOBAL_WIDTH):
             for j in range(GLOBAL_HEIGHT):
-                position = [0., 0., 0.]
-                position[0] = i * cell_len - half_len + cell_len / 2.
-                position[1] = j * cell_len - half_len + cell_len / 2.
+                position = [0.,0.,0.]
+                position[0] = i*cell_len - half_len + cell_len/2.
+                position[1] = j*cell_len - half_len + cell_len/2.
                 position[2] = 0.
-                rel_heading, rel_elevation, rel_dist = calculate_vp_rel_pos_fts(center_position, position,
-                                                                                base_heading=0., base_elevation=0.)
+                rel_heading, rel_elevation, rel_dist = calculate_vp_rel_pos_fts(center_position, position, base_heading=0., base_elevation=0.)
                 rel_angles.append([rel_heading, rel_elevation])
                 rel_dists.append(
                     [rel_dist / MAX_DIST]
@@ -285,53 +344,48 @@ class EnvBatch(object):
 
         return gridmap_pos_fts
 
-    def getGlobalMap(self, tid):
+    def getGlobalMap(self,tid):
         i = tid
         sim = self.sims[i]
         state = sim.getState()[0]
         scan_id = state.scanId
         viewpoint_id = state.location.viewpointId
 
+
         self.heading[i] = state.heading
         viewpoint_x_list = []
         viewpoint_y_list = []
-        depth = self.DepthDB.get_image_feature(scan_id, viewpoint_id)
+        depth = self.DepthDB.get_image_feature(scan_id,viewpoint_id)
         patch_center_index = np.array([8 + i * 16 for i in range(8)])
 
-        depth = depth[:, patch_center_index][:, :, patch_center_index].reshape(36, -1)
+        depth = depth[:,patch_center_index][:,:,patch_center_index].reshape(36,-1)
 
         depth_mask = np.ones(depth.shape)
-        depth_mask[depth == 0] = 0
-        self.global_mask[i].append(depth_mask[12:24].reshape(12, -1))
+        depth_mask[depth==0] = 0
+        self.global_mask[i].append(depth_mask[12:24].reshape(12,-1))
         position = self.viewpoint_info['%s_%s' % (scan_id, viewpoint_id)]
 
-        for ix in range(12, 24):
-            rel_x, rel_y = get_rel_position(depth[ix:ix + 1], (ix - 12) * math.pi / 6)
+
+        for ix in range(12,24):
+            rel_x, rel_y = get_rel_position(depth[ix:ix+1],(ix-12)*math.pi/6)
             global_x = rel_x + position["x"]
             global_y = rel_y + position["y"]
             viewpoint_x_list.append(global_x)
             viewpoint_y_list.append(global_y)
 
-        semantic = self.SemanticDB.get_image_feature(scan_id, viewpoint_id)
+        semantic = self.SemanticDB.get_image_feature(scan_id,viewpoint_id)
 
-        semantic_feat = semantic.reshape((-1, 768))
-
-        zero_padding = np.zeros((12 * 64,))
-
-        if (self.global_semantic[i] is None
-                or not isinstance(self.global_semantic[i], np.ndarray)
-                or self.global_semantic[i].size == 0):
-
-            self.global_semantic[i] = semantic_feat
-            self.global_map[i] = zero_padding
+        if len(self.global_semantic[i]) == 0:
+            self.global_semantic[i] = semantic.reshape(-1, 768)
+            self.global_map[i] = np.zeros((12*64,))
 
         else:
-            self.global_semantic[i] = np.concatenate([self.global_semantic[i], semantic_feat], axis=0)
-            self.global_map[i] = np.concatenate([self.global_map[i], zero_padding], axis=0)
+            self.global_semantic[i] = np.concatenate((self.global_semantic[i], semantic.reshape(-1, 768)), axis=0)
+            self.global_map[i] = np.concatenate([self.global_map[i],np.zeros((12*64,))],0)
 
         self.global_map[i].fill(-1)
-        position_x = np.concatenate(viewpoint_x_list, 0)
-        position_y = np.concatenate(viewpoint_y_list, 0)
+        position_x = np.concatenate(viewpoint_x_list,0)
+        position_y = np.concatenate(viewpoint_y_list,0)
         self.global_position_x[i].append(position_x)
         self.global_position_y[i].append(position_y)
 
@@ -344,22 +398,17 @@ class EnvBatch(object):
         tmp_min_y = position_y.min()
         if tmp_min_y < self.min_y[i]: self.min_y[i] = tmp_min_y
 
-        if position["x"] - self.min_x[i] > self.max_x[i] - position["x"]:
-            x_half_len = position["x"] - self.min_x[i]
-        else:
-            x_half_len = self.max_x[i] - position["x"]
 
-        if position["y"] - self.min_y[i] > self.max_y[i] - position["y"]:
-            y_half_len = position["y"] - self.min_y[i]
-        else:
-            y_half_len = self.max_y[i] - position["y"]
+        if position["x"]-self.min_x[i] > self.max_x[i]-position["x"] : x_half_len = position["x"]-self.min_x[i]
+        else: x_half_len = self.max_x[i]-position["x"]
 
-        if x_half_len > y_half_len:
-            half_len = x_half_len
-        else:
-            half_len = y_half_len
+        if position["y"]-self.min_y[i] > self.max_y[i]-position["y"] : y_half_len = position["y"]-self.min_y[i]
+        else: y_half_len = self.max_y[i]-position["y"]
 
-        half_len = half_len * 2 / 3
+        if x_half_len > y_half_len : half_len = x_half_len
+        else: half_len = y_half_len
+
+        half_len = half_len * 2/3
         min_x = position["x"] - half_len
         max_x = position["x"] + half_len
         min_y = position["y"] - half_len
@@ -367,40 +416,43 @@ class EnvBatch(object):
 
         angle = -self.heading[i]
 
-        global_position_x = np.concatenate(self.global_position_x[i], 0)
-        global_position_y = np.concatenate(self.global_position_y[i], 0)
+        global_position_x = np.concatenate(self.global_position_x[i],0)
+        global_position_y = np.concatenate(self.global_position_y[i],0)
         local_map = self.global_semantic[i]
-        global_mask = np.concatenate(self.global_mask[i], 0)
+        global_mask = np.concatenate(self.global_mask[i],0)
 
         tmp_x = global_position_x - position["x"]
         tmp_y = global_position_y - position["y"]
 
         map_x = tmp_x * math.cos(angle) + tmp_y * math.sin(angle)
         map_y = tmp_y * math.cos(angle) - tmp_x * math.sin(angle)
-        map_x = ((map_x + half_len) / (2 * half_len) * (GLOBAL_WIDTH - 1)).astype(np.int32)
+        map_x = ((map_x + half_len) / (2*half_len) * (GLOBAL_WIDTH-1)).astype(np.int32)
 
-        map_y = ((map_y + half_len) / (2 * half_len) * (GLOBAL_HEIGHT - 1)).astype(np.int32)
+        map_y = ((map_y + half_len) / (2*half_len) * (GLOBAL_HEIGHT-1)).astype(np.int32)
 
-        map_x[map_x < 0] = 0
-        map_x[map_x >= GLOBAL_WIDTH] = GLOBAL_WIDTH - 1
+        map_x[map_x<0] = 0
+        map_x[map_x>=GLOBAL_WIDTH] = GLOBAL_WIDTH-1
 
-        map_y[map_y < 0] = 0
-        map_y[map_y >= GLOBAL_HEIGHT] = GLOBAL_HEIGHT - 1
+        map_y[map_y<0] = 0
+        map_y[map_y>=GLOBAL_HEIGHT] = GLOBAL_HEIGHT-1
 
-        label_index = (global_mask == 1)
+        label_index = (global_mask==1)
 
-        map_index = map_x * 16 + map_y
+        map_index = map_x*16 + map_y
         map_index = map_index.reshape(-1)
         label_index = label_index.reshape(-1)
 
-        for patch_id in range(GLOBAL_WIDTH * GLOBAL_HEIGHT):
-            filter_index = (map_index == patch_id) & label_index
+
+        for patch_id in range(GLOBAL_WIDTH*GLOBAL_HEIGHT):
+
+            filter_index = (map_index==patch_id)&label_index
             self.global_map[i][filter_index] = patch_id
+
 
         gridmap_pos_fts = self.get_gridmap_pos_fts(half_len)
 
-        return tid, self.global_semantic[i], self.global_position_x[i], self.global_position_y[i], self.global_mask[i], \
-            self.global_map[i], self.max_x[i], self.min_x[i], self.max_y[i], self.min_y[i], gridmap_pos_fts
+        return tid, self.global_semantic[i],self.global_position_x[i],self.global_position_y[i],self.global_mask[i],self.global_map[i],self.max_x[i],self.min_x[i],self.max_y[i],self.min_y[i], gridmap_pos_fts
+
 
     def getStates(self):
         """
@@ -414,17 +466,17 @@ class EnvBatch(object):
             scan_id = state.scanId
             viewpoint_id = state.location.viewpointId
             feature = self.feat_db.get_image_feature(scan_id, viewpoint_id)
-            self.feature_states[i] = (feature, state)
+            Objecttext_feat = self.ObjectTextDB.get_text_features(scan_id, viewpoint_id)
+            self.feature_states[i] = (feature,Objecttext_feat, state)
+
 
         for i in range(len(self.sims)):
             state = self.sims[i].getState()[0]
             scan_id = state.scanId
             viewpoint_id = state.location.viewpointId
 
-            tid, self.global_semantic[i], self.global_position_x[i], self.global_position_y[i], self.global_mask[i], \
-                self.global_map[i], self.max_x[i], self.min_x[i], self.max_y[i], self.min_y[
-                i], gridmap_pos_fts = self.getGlobalMap(i)
-            self.feature_states[i] += (self.global_semantic[i], self.global_map[i], gridmap_pos_fts)
+            tid, self.global_semantic[i],self.global_position_x[i],self.global_position_y[i],self.global_mask[i],self.global_map[i],self.max_x[i],self.min_x[i],self.max_y[i],self.min_y[i], gridmap_pos_fts = self.getGlobalMap(i)
+            self.feature_states[i] += (self.global_semantic[i],self.global_map[i],gridmap_pos_fts)
 
         return self.feature_states
 
@@ -439,8 +491,8 @@ class R2RNavBatch(object):
     ''' Implements the REVERIE navigation task, using discretized viewpoints and pretrained features '''
 
     def __init__(
-            self, view_db, instr_data, connectivity_dir,
-            batch_size=64, angle_feat_size=4, seed=0, name=None, sel_data_idxs=None
+        self, view_db, instr_data, connectivity_dir,
+        batch_size=64, angle_feat_size=4, seed=0, name=None, sel_data_idxs=None
     ):
         self.env = EnvBatch(connectivity_dir, feat_db=view_db, batch_size=batch_size)
         self.data = instr_data
@@ -450,12 +502,12 @@ class R2RNavBatch(object):
         self.angle_feat_size = angle_feat_size
         self.name = name
 
-        self.gt_trajs = self._get_gt_trajs(self.data)  # for evaluation
+        self.gt_trajs = self._get_gt_trajs(self.data) # for evaluation
 
         # in validation, we would split the data
         if sel_data_idxs is not None:
             t_split, n_splits = sel_data_idxs
-            ndata_per_split = len(self.data) // n_splits 
+            ndata_per_split = len(self.data) // n_splits
             start_idx = ndata_per_split * t_split
             if t_split == n_splits - 1:
                 end_idx = None
@@ -478,15 +530,18 @@ class R2RNavBatch(object):
         print('%s loaded with %d instructions, using splits: %s' % (
             self.__class__.__name__, len(self.data), self.name))
 
+
     def _get_gt_trajs(self, data):
         gt_trajs = {
             x['instr_id']: (x['scan'], x['path']) \
-            for x in data if len(x['path']) > 1
+                for x in data if len(x['path']) > 1
         }
         return gt_trajs
 
     def size(self):
         return len(self.data)
+
+
 
     def _load_nav_graphs(self):
         """
@@ -513,7 +568,7 @@ class R2RNavBatch(object):
         if batch_size is None:
             batch_size = self.batch_size
 
-        batch = self.data[self.ix: self.ix + batch_size]
+        batch = self.data[self.ix: self.ix+batch_size]
         if len(batch) < batch_size:
             random.shuffle(self.data)
             self.ix = batch_size - len(batch)
@@ -529,7 +584,7 @@ class R2RNavBatch(object):
             random.shuffle(self.data)
         self.ix = 0
 
-    def make_candidate(self, feature, scanId, viewpointId, viewId):
+    def make_candidate(self, feature, objecttext_feat,scanId, viewpointId, viewId):
         def _loc_distance(loc):
             return np.sqrt(loc.rel_heading ** 2 + loc.rel_elevation ** 2).astype(np.float32)
         base_heading = (viewId % 12) * math.radians(30)
@@ -554,6 +609,7 @@ class R2RNavBatch(object):
                 elevation = state.elevation - base_elevation
 
                 visual_feat = feature[ix]
+                object_feat = objecttext_feat[ix]
 
                 # get adjacent locations
                 for j, loc in enumerate(state.navigableLocations[1:]):
@@ -574,19 +630,20 @@ class R2RNavBatch(object):
                             "normalized_heading": np.float32(state.heading + loc.rel_heading),
                             "normalized_elevation": np.float32(state.elevation + loc.rel_elevation),
                             'scanId': scanId,
-                            'viewpointId': loc.viewpointId,  # Next viewpoint id
+                            'viewpointId': loc.viewpointId, # Next viewpoint id
                             'pointId': np.int32(ix),
                             'distance': np.float32(distance),
                             'idx': np.int32(j + 1),
                             'feature': np.concatenate((visual_feat, angle_feat), -1).astype(np.float32),
+                            'objecttext_feat':  np.array(object_feat, dtype=np.float32),
                             'position': (np.float32(loc.x), np.float32(loc.y), np.float32(loc.z)),
                         }
             candidate = list(adj_dict.values())
             self.buffered_state_dict[long_id] = [
                 {key: c[key]
                  for key in
-                 ['normalized_heading', 'normalized_elevation', 'scanId', 'viewpointId',
-                  'pointId', 'idx', 'position']}
+                    ['normalized_heading', 'normalized_elevation', 'scanId', 'viewpointId',
+                     'pointId', 'idx', 'position']}
                 for c in candidate
             ]
             return candidate
@@ -597,10 +654,14 @@ class R2RNavBatch(object):
                 c_new = c.copy()
                 ix = np.int32(c_new['pointId'])
                 visual_feat = feature[ix].astype(np.float32)
+                #print('type(visual_feat):', type(visual_feat))
+                object_feat = objecttext_feat[ix].float()
+                #print('object_feat',type(object_feat))
                 c_new['heading'] = np.float32(c_new['normalized_heading'] - base_heading)
                 c_new['elevation'] = np.float32(c_new['normalized_elevation'] - base_elevation)
-                angle_feat = angle_feature(c_new['heading'], c_new['elevation'], self.angle_feat_size)
+                angle_feat = angle_feature(c_new['heading'], c_new['elevation'],self.angle_feat_size)
                 c_new['feature'] = np.concatenate((visual_feat, angle_feat), -1).astype(np.float32)
+                c_new['objecttext_feat'] = np.array(object_feat, dtype=np.float32)
                 c_new.pop('normalized_heading')
                 c_new.pop('normalized_elevation')
                 candidate_new.append(c_new)
@@ -608,37 +669,42 @@ class R2RNavBatch(object):
 
     def _get_obs(self):
         obs = []
-        for i, (feature, state, grid_fts, grid_map, gridmap_pos_fts) in enumerate(self.env.getStates()):
+        for i, (feature, ObjectText_feat,state,grid_fts,grid_map,gridmap_pos_fts) in enumerate(self.env.getStates()):
 
             item = self.batch[i]
+            if state is None:
+                raise ValueError(f"[env.py] getState 返回 None，检查 viewpoint/scan 是否有效。")
             base_view_id = state.viewIndex
-
+            '''for i, feat in enumerate(feature):
+                print(f'[{i}] shape: ', np.array(feat).shape)
+            for i, feat in enumerate(ObjectText_feat):
+                print(f'[{i}] shape: ', np.array(feat).shape)'''
             # Full features
-            candidate = self.make_candidate(feature, state.scanId, state.location.viewpointId, state.viewIndex)
+            candidate = self.make_candidate(feature,ObjectText_feat,state.scanId, state.location.viewpointId, state.viewIndex)
             # [visual_feature, angle_feature] for views
             feature = np.concatenate((feature, self.angle_feature[base_view_id]), -1)
-
             ob = {
-                'instr_id': item['instr_id'],
-                'scan': state.scanId,
-                'viewpoint': state.location.viewpointId,
-                'viewIndex': state.viewIndex,
+                'instr_id' : item['instr_id'],
+                'scan' : state.scanId,
+                'viewpoint' : state.location.viewpointId,
+                'viewIndex' : state.viewIndex,
                 'position': (np.float32(state.location.x), np.float32(state.location.y), np.float32(state.location.z)),
-                'heading': np.float32(state.heading),
-                'elevation': np.float32(state.elevation),
-                'feature': feature.astype(np.float32),
+                'heading' : np.float32(state.heading),
+                'elevation' : np.float32(state.elevation),
+                'objecttext_feat': ObjectText_feat,
+                'feature' : feature.astype(np.float32),
                 'candidate': candidate,
-                'navigableLocations': state.navigableLocations,
-                'instruction': item['instruction'],
+                'navigableLocations' : state.navigableLocations,
+                'instruction' : item['instruction'],
                 'instr_encoding': [np.int32(i) for i in item['instr_encoding']],
-                'gt_path': item['path'],
-                'path_id': item['path_id'],
+                'gt_path' : item['path'],
+                'path_id' : item['path_id'],
                 'grid_fts': torch.tensor(grid_fts),
                 'grid_map': torch.tensor(grid_map),
                 'gridmap_pos_fts': torch.tensor(gridmap_pos_fts)
             }
             # RL reward. The negative distance between the state and the final state
-            # There are multiple gt end viewpoints on REVERIE. 
+            # There are multiple gt end viewpoints on REVERIE.
             if ob['instr_id'] in self.gt_trajs:
                 ob['distance'] = np.float32(self.shortest_distances[ob['scan']][ob['viewpoint']][item['path'][-1]])
             else:
@@ -662,6 +728,7 @@ class R2RNavBatch(object):
         ''' Take action (same interface as makeActions) '''
         self.env.makeActions(actions)
         return self._get_obs()
+
 
     ############### Nav Evaluation ###############
     def _get_nearest(self, shortest_distances, goal_id, path):
@@ -704,7 +771,7 @@ class R2RNavBatch(object):
         return scores
 
     def eval_metrics(self, preds):
-        ''' Evaluate each agent trajectory based on how close it got to the goal location 
+        ''' Evaluate each agent trajectory based on how close it got to the goal location
         the path contains [view_id, angle, vofv]'''
         print('eval %d predictions' % (len(preds)))
 
@@ -732,3 +799,4 @@ class R2RNavBatch(object):
             'CLS': np.mean(metrics['CLS']) * 100,
         }
         return avg_metrics, metrics
+
