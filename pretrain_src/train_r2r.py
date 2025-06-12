@@ -1,29 +1,39 @@
 import os
+import sys
+import json
+import argparse
 import time
 from collections import defaultdict
-
-import torch
-import torch.cuda.amp as amp  # TODO
-import torch.nn.functional as F
 from easydict import EasyDict
 from tqdm import tqdm
-from transformers import AutoModel
-from transformers import AutoTokenizer, PretrainedConfig
 
-from data.dataset import R2RTextPathData
+import torch
+import torch.nn.functional as F
+import torch.distributed as dist
+
+import torch.cuda.amp as amp   # TODO
+
+from transformers import AutoTokenizer, PretrainedConfig
+from transformers import AutoModel
+
+from utils.logger import LOGGER, TB_LOGGER, RunningMeter, add_log_to_file
+from utils.save import ModelSaver, save_training_meta
+from utils.misc import NoOp, set_dropout, set_random_seed, set_cuda, wrap_model
+from utils.distributed import all_gather
+
+from optim import get_lr_sched
+from optim.misc import build_optimizer
+
+from parser import load_parser, parse_with_config
+
 from data.loader import MetaLoader, PrefetchLoader, build_dataloader
+from data.dataset import R2RTextPathData
 from data.tasks import (
     MlmDataset, mlm_collate,
     MrcDataset, mrc_collate,
     SapDataset, sap_collate)
+
 from model.pretrain_cmt import GlocalTextPathCMTPreTraining
-from optim import get_lr_sched
-from optim.misc import build_optimizer
-from parser import load_parser, parse_with_config
-from utils.distributed import all_gather
-from utils.logger import LOGGER, TB_LOGGER, RunningMeter, add_log_to_file
-from utils.misc import NoOp, set_dropout, set_random_seed, set_cuda, wrap_model
-from utils.save import ModelSaver, save_training_meta
 
 torch.set_float32_matmul_precision('high')  # 推荐 A800 设置
 
@@ -60,7 +70,6 @@ def create_dataloaders(
 
 def main(opts):
     default_gpu, n_gpu, device = set_cuda(opts)
-
     if default_gpu:
         LOGGER.info(
             'device: {} n_gpu: {}, distributed training: {}, 16-bits training: {}'.format(
@@ -125,8 +134,7 @@ def main(opts):
                     param_name3 = param_name.replace('bert.encoder.x_layers', 'bert.grid_txt_encoder.encoder.x_layers')
                     param_name4 = param_name.replace('bert.encoder.x_layers',
                                                      'bert.img_embeddings.fusion_module.cross_encoder.x_layers')
-                    checkpoint[param_name1] = checkpoint[param_name2] = checkpoint[param_name3] = checkpoint[
-                        param_name4] = param
+                    checkpoint[param_name1] = checkpoint[param_name2] = checkpoint[param_name3] = checkpoint[param_name4] = param
 
                 elif 'cls.predictions' in param_name:
                     param_name = param_name.replace('cls.predictions', 'mlm_head.predictions')

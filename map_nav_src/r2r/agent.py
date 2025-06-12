@@ -514,7 +514,7 @@ class GMapNavAgent(Seq2SeqAgent):
                 _, a_t = nav_logits.max(1)  # 选择概率最高的动作
                 a_t = a_t.detach()
             elif self.feedback == 'sample':  # 如果使用采样
-                c = torch.distributions.Categorical(nav_probs)  # 定义分类分布
+                c = torch.distributions.Categorical(nav_probs)
                 self.logs['entropy'].append(c.entropy().sum().item())  # 记录熵
                 entropys.append(c.entropy())  # 用于优化
                 a_t = c.sample().detach()  # 采样动作

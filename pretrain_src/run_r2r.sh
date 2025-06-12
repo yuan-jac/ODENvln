@@ -1,9 +1,9 @@
 NODE_RANK=0
 NUM_GPUS=1
-outdir=../datasets/R2R/exprs_map/pretrain/cmt-vitbase-mlm.mrc.sap-init.lxmert-aug.speaker-new60000+40000
+outdir=../datasets/R2R/exprs_map/pretrain/cmt-vitbase-mlm.mrc.sap-init.lxmert-aug.speaker-new-ckp-2-nogate
 
 # train (使用 torchrun)
-CUDA_VISIBLE_DEVICES='6' torchrun --master_port 29508 \
+CUDA_VISIBLE_DEVICES='0' torchrun --master_port 29511 \
     --nproc_per_node=${NUM_GPUS} --node_rank $NODE_RANK \
     train_r2r.py --world_size ${NUM_GPUS} \
     --vlnbert cmt \

@@ -471,47 +471,52 @@ class CrossmodalEncoder(nn.Module):
             )
         return img_embeds
 
+class GELU(nn.Module):
+    def forward(self, x):
+        return gelu(x)
 
 class GatedCrossAttentionFusion(nn.Module):
-    """
-    使用门控交叉注意力机制融合图像和文本特征
-    """
-
-    def __init__(self, dim=768, num_heads=8):
+    def __init__(self, config):
         super().__init__()
-        self.cross_attn = nn.MultiheadAttention(embed_dim=dim, num_heads=num_heads, batch_first=True)
+        # 复用 CrossmodalEncoder 的多层跨模态注意力
+        self.cross_encoder = CrossmodalEncoder(config)
 
-        # 可学习门控: 输入[attn_output ; image_feats] → 输出[gate]
-        self.gate_mlp = nn.Sequential(
-            nn.Linear(dim * 2, dim),
-            nn.ReLU(),
-            nn.Linear(dim, dim),
-            nn.Sigmoid()  # gate ∈ [0,1]
+        # 保留门控机制
+        self.fusion_weight_mlp = nn.Sequential(
+            nn.Linear(config.hidden_size * 2, config.hidden_size),
+            GELU(),
+            nn.Linear(config.hidden_size, 1),  # 输出一个 scalar 权重 α
+            nn.Sigmoid()  # 限定范围在[0, 1]
         )
-
-        self.norm = nn.LayerNorm(dim)
+        self.norm = BertLayerNorm(config.hidden_size, eps=1e-12)
 
     def forward(self, image_feats, text_feats):
         """
-        image_feats: [B, L, D] ← Value (图像特征)
-        text_feats:  [B, L, D] ← Query (文本特征)
-
-        Return:
-        fused_feats: [B, L, D] ← 文本引导下的图像特征（含残差门控）
+        image_feats: [B, L_img, D] 视觉特征（作为 Key/Value）
+        text_feats:  [B, L_txt, D] 文本特征（作为 Query）
+        返回: [B, L_img, D] 门控融合后的视觉特征
         """
-        # 交叉注意力
-        attn_output, attn_weights = self.cross_attn(
-            query=text_feats, key=image_feats, value=image_feats
-        )  # [B, L, D]
+        # 1. 生成掩码（假设输入是完整序列，无填充）
+        B, L_img, D = image_feats.shape
+        L_txt = text_feats.shape[1]
+        txt_masks = torch.ones(B, L_txt).to(image_feats.device)  # 全1掩码
+        img_masks = torch.ones(B, L_img).to(image_feats.device)
 
-        # 门控: [attn_output ; image_feats] → gate
-        gate_input = torch.cat([attn_output, image_feats], dim=-1)  # [B, L, 2D]
-        gate = self.gate_mlp(gate_input)  # [B, L, D], 每个位置每个维度一个门控值
+        # 2. 多层跨模态注意力更新视觉特征
+        # 注意：CrossmodalEncoder 的输入顺序是 (txt, img)，输出更新后的 img_embeds
+        attn_output = self.cross_encoder(
+            img_embeds=image_feats,
+            img_masks=img_masks,
+            txt_embeds=text_feats,
+            txt_masks=txt_masks,
+            graph_sprels=None  # 可选：传入图结构关系
+        )  # 输出形状: [B, L_img, D]
 
-        # 门控残差融合
-        fused = gate * attn_output + (1 - gate) * image_feats
-        return self.norm(fused)
-
+        # 3. 门控融合（与原版一致）
+        gate_input = torch.cat([attn_output, image_feats], dim=-1)  # [B, L_img, 2D]
+        gate = self.fusion_weight_mlp(gate_input)  # [B, L_img, D]
+        fused = gate * attn_output + (1 - gate) * image_feats  # 残差门控
+        return fused
 
 class ImageEmbeddings(nn.Module):
     def __init__(self, config):
@@ -523,9 +528,7 @@ class ImageEmbeddings(nn.Module):
         self.img_linear = nn.Linear(config.image_feat_size, config.hidden_size)
         self.img_layer_norm = BertLayerNorm(config.hidden_size, eps=1e-12)
         # 图像-文本融合模块
-        self.fusion_module = GatedCrossAttentionFusion(
-            dim=config.hidden_size,
-            num_heads=config.num_attention_heads
+        self.fusion_module = GatedCrossAttentionFusion( config
         )
         self.loc_linear = nn.Linear(config.angle_feat_size + 3, config.hidden_size)
         self.loc_layer_norm = BertLayerNorm(config.hidden_size, eps=1e-12)
@@ -747,9 +750,10 @@ class GlocalTextPathNavCMT(BertPreTrainedModel):
             buffer.data = buffer.data.float()
         self.embeddings = BertEmbeddings(config)
         self.lang_encoder = LanguageEncoder(config)
+        config.num_x_layers = 1
 
         self.img_embeddings = ImageEmbeddings(config)
-
+        config.num_x_layers = 4
         self.local_encoder = LocalVPEncoder(config)
         self.global_encoder = GlobalMapEncoder(config)
 

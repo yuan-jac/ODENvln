@@ -135,7 +135,6 @@ def parse_with_config(parser):
     args = parser.parse_args()
     if args.config is not None:
         config_args = json.load(open(args.config))
-        print("Loaded config:", config_args)
         override_keys = {
             arg[2:].split("=")[0] for arg in sys.argv[1:] if arg.startswith("--")
         }

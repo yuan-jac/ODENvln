@@ -238,11 +238,11 @@ class EnvBatch(object):
         self.DepthDB = DepthFeaturesDB(os.path.join(semantic_map_dir,"depth.hdf5"))
         self.SemanticDB = SemanticFeaturesDB(os.path.join(semantic_map_dir,"siglip2_p32_256.hdf5"))
         self.ObjectTextDB = SingleTextDescriptionDB(
-            '/data/GridMM/datasets/R2R/features/object_embeddings-base.pt',
+            'datasets/R2R/features/object_embeddings-base.pt',
             mode='object'
         )
         self.SpatialTextDB = SingleTextDescriptionDB(
-            '/data/GridMM/datasets/R2R/features/spatial_embeddings-base.pt',
+            'datasets/R2R/features/spatial_embeddings-base.pt',
             mode='spatial'
         )
         self.viewpoint_info = json.load(open(os.path.join(semantic_map_dir,"viewpoint_info.json")))
